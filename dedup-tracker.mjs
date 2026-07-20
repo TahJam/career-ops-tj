@@ -15,6 +15,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { rebuildRow } from './tracker-utils.mjs';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { normalizeRole } from './role-matcher.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md
@@ -172,25 +173,15 @@ function pairKey(a, b) {
 
 const protectedTitlePairs = new Set();
 
-/**
- * Normalize a role title into the key used for exact same-opening comparison.
- *
- * Deduplication must only collapse rows that describe the *same* opening, so
- * the comparison is exact on the meaningful title text. Only presentation noise
- * is removed — letter case and whitespace (leading, trailing, and repeated
- * internal spaces). Distinguishing words such as seniority ("Senior") or the
- * team suffix ("Data Infrastructure" vs "Agent Infrastructure") are preserved,
- * so sibling roles at one company are never merged.
- *
- * @param {string} role - Role title from an applications.md row.
- * @returns {string} Lowercase, whitespace-collapsed role key.
- */
-function normalizeRole(role) {
-  return String(role ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
+// normalizeRole (exact same-opening comparison: case/whitespace only, no
+// punctuation stripping, no stopword removal) is imported from
+// role-matcher.mjs — the shared module also used by merge-tracker.mjs's
+// tier-3 dedup check, so both scripts stay on identical normalization instead
+// of two copies that could drift apart. Deduplication must only collapse rows
+// that describe the *same* opening: distinguishing words such as seniority
+// ("Senior") or the team suffix ("Data Infrastructure" vs "Agent
+// Infrastructure") are preserved, so sibling roles at one company are never
+// merged.
 
 /**
  * Decide whether two same-company tracker rows should be deduplicated.

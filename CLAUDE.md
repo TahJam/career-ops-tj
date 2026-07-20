@@ -248,16 +248,7 @@ This system is designed to be customized by YOU (AI Agent). When the user asks y
 
 ### Language Modes
 
-Default modes are in `modes/` (English). Language-specific modes live in `modes/{lang}/` — each has `_shared.md`, the eval/apply/`pipeline.md` modes, and a `README.md` documenting that market's vocabulary:
-
-| Language | Dir | Markets |
-|----------|-----|---------|
-| German | `modes/de/` | DACH (Germany, Austria, Switzerland) |
-| French | `modes/fr/` | France, Belgium, Switzerland, Luxembourg, Quebec |
-| Japanese | `modes/ja/` | Japan |
-| Hindi | `modes/hi/` | India |
-
-**When to use a `{lang}` mode** — if any holds: the user says "use {lang} modes"; `config/profile.yml` sets `language.modes_dir: modes/{lang}`; or you detect a {lang} JD (then suggest switching). Read from `modes/{lang}/` instead of `modes/`.
+Default modes are in `modes/` (English). This fork removed the 16 non-English language-mode directories that shipped upstream — see `plans/07-17-26_pipeline-efficiency-and-personalization.md` — since this candidate's search is US-only and English-only, and they were never auto-loaded without an explicit `language.modes_dir` opt-in anyway. If a non-English-market search is ever needed again, re-pull the relevant directory from the upstream career-ops repo.
 
 **When NOT to:** if the user applies to English-language roles — even at French, German, Japanese, or Indian companies — use the default English modes.
 

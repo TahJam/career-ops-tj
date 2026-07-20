@@ -55,6 +55,40 @@ export const BASELINE_TOKENS = new Set([
 ]);
 
 /**
+ * Normalize a role title for exact-match comparison: case-fold and collapse
+ * whitespace only — no punctuation stripping, no stopword removal. Mirrors
+ * the normalization `dedup-tracker.mjs` already uses for its own exact-match
+ * dedup pass.
+ *
+ * @param {string} role - Raw role title.
+ * @returns {string} Lowercase, whitespace-collapsed role key.
+ */
+export function normalizeRole(role) {
+  return String(role ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Decide whether two role titles are the exact same opening after light
+ * normalization (case/whitespace only).
+ *
+ * Unlike `roleFuzzyMatch`, this performs no token-overlap heuristics — it is
+ * intended for contexts where a false "duplicate" is destructive (e.g. an
+ * unattended merge that overwrites a tracker row) and a false "not a
+ * duplicate" merely produces an extra row a human can dedupe later. See
+ * `merge-tracker.mjs`'s tier-3 dedup check for the motivating case.
+ *
+ * @param {string} a - First role title.
+ * @param {string} b - Second role title.
+ * @returns {boolean} True when the titles are identical after normalization.
+ */
+export function roleExactMatch(a, b) {
+  return normalizeRole(a) === normalizeRole(b);
+}
+
+/**
  * Convert a role title into content tokens used for fuzzy matching.
  *
  * The tokenizer keeps long descriptive words and a narrow set of short

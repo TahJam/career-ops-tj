@@ -4122,6 +4122,77 @@ try {
   fail(`merge-tracker fuzzy dedup tests crashed: ${e.message}`);
 }
 
+// ── MERGE-TRACKER EXACT-MATCH REGRESSION: SHORT-TITLE FALSE POSITIVES ────
+// #751/#947's fuzzy-match tests only exercise long titles with a shared
+// prefix or brand token, where the Jaccard-over-union formula correctly stays
+// under 0.6. They never caught the opposite failure: SHORT titles whose
+// entire content-token sets nearly or fully coincide, which crosses the 0.6
+// threshold by chance even for genuinely different postings. This bit twice
+// in production — "Senior Solutions Architect - Europe" vs "Solutions
+// Architect (EST or PST)" (tokens both reduce to {solutions, architect},
+// Jaccard 1.0) and "Software Engineer, Voice Agents & AI (Senior or Staff
+// Level)" vs "Senior Software Engineer - Saga / Voice OS" (Jaccard exactly
+// 0.6) — silently overwriting one tracker row's score/report link with an
+// unrelated posting's data. Fixed by switching merge-tracker.mjs's tier-3
+// check from roleFuzzyMatch to roleExactMatch (case/whitespace-normalized
+// exact match, same normalization dedup-tracker.mjs already uses).
+console.log('\n🧪 Testing merge-tracker exact-match regression (short-title false positives)...');
+try {
+  const exactTmp = mkdtempSync(join(tmpdir(), 'career-ops-exact-'));
+  try {
+    mkdirSync(join(exactTmp, 'data'));
+    mkdirSync(join(exactTmp, 'reports'));
+    const additionsDir = join(exactTmp, 'additions');
+    mkdirSync(additionsDir);
+    const tracker = join(exactTmp, 'data', 'applications.md');
+    writeFileSync(tracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
+      '| 1 | 2026-01-04 | Deepgram | Senior Solutions Architect - Europe | 1.5/5 | Evaluated | ❌ | [1](../reports/001-deepgram-2026-01-04.md) | existing |\n' +
+      '| 2 | 2026-01-04 | Deepgram | Software Engineer, Voice Agents & AI (Senior or Staff Level) | 3.7/5 | Evaluated | ❌ | [2](../reports/002-deepgram-2026-01-04.md) | existing |\n');
+    for (const n of ['001-deepgram-2026-01-04', '002-deepgram-2026-01-04', '003-deepgram-2026-01-05', '004-deepgram-2026-01-05']) {
+      writeFileSync(join(exactTmp, 'reports', `${n}.md`), '# fixture\n');
+    }
+    // Real reproduction: near-identical/identical Jaccard token sets, genuinely different postings.
+    writeFileSync(join(additionsDir, '003-deepgram.tsv'),
+      '3\t2026-01-05\tDeepgram\tSolutions Architect (EST or PST)\tEvaluated\t2.7/5\t❌\t[3](reports/003-deepgram-2026-01-05.md)\tdistinct posting, same token set (Jaccard 1.0)\n');
+    writeFileSync(join(additionsDir, '004-deepgram.tsv'),
+      '4\t2026-01-05\tDeepgram\tSenior Software Engineer - Saga / Voice OS\tEvaluated\t4.1/5\t❌\t[4](reports/004-deepgram-2026-01-05.md)\tdistinct posting, Jaccard exactly 0.6\n');
+
+    const exactResult = run(NODE, ['merge-tracker.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker, CAREER_OPS_ADDITIONS: additionsDir } });
+    if (exactResult === null) {
+      fail('merge-tracker.mjs crashed during exact-match regression test');
+    } else {
+      const merged = readFileSync(tracker, 'utf-8');
+
+      if (merged.includes('Senior Solutions Architect - Europe') && merged.includes('Solutions Architect (EST or PST)')) {
+        pass('Solutions Architect Europe/EST-PST kept as separate rows (production incident #1)');
+      } else {
+        fail('Solutions Architect Europe/EST-PST were merged — short-title false positive regressed');
+      }
+
+      if (merged.includes('Software Engineer, Voice Agents & AI (Senior or Staff Level)') && merged.includes('Senior Software Engineer - Saga / Voice OS')) {
+        pass('Voice Agents & AI / Saga Voice OS kept as separate rows (production incident #2)');
+      } else {
+        fail('Voice Agents & AI / Saga Voice OS were merged — short-title false positive regressed');
+      }
+
+      // Confirm exact-match repost handling still updates in place (unchanged behavior).
+      const rows = merged.split('\n').filter(l => l.includes('| Deepgram |'));
+      if (rows.length === 4) {
+        pass('all 4 distinct Deepgram rows present, none collapsed');
+      } else {
+        fail(`expected 4 Deepgram rows, found ${rows.length}`);
+      }
+    }
+  } finally {
+    rmSync(exactTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`merge-tracker exact-match regression tests crashed: ${e.message}`);
+}
+
 // ── MERGE-TRACKER CROSS-CHANNEL VIA GUARD: NON-LATIN AGENCIES (#1603) ─────
 // normalizeCompany() strips [^a-z0-9], so two different non-Latin agency
 // names both collapse to '' and the #1596 cross-channel guard treated them
@@ -4332,14 +4403,19 @@ try {
 }
 
 // ── MERGE-TRACKER REQ/JOB-NUMBER DEDUP GUARD (#1524) ─────────────────────
-// Tier-3 dedup (company + fuzzy role match) had no req/job-number awareness:
-// two distinct postings at the same company with similarly-worded titles were
-// silently collapsed into one row whenever a req/job number in the Notes
-// column was the only thing distinguishing them. Covers: (a) same-looking
-// titles + different req numbers → NOT a duplicate, (b) same-looking titles +
-// same req number → still a duplicate, (c) no req number on either side →
-// existing fuzzy-match behavior unchanged, (d) req number on only one side →
-// falls back to fuzzy-match behavior (can't prove a mismatch without both).
+// Tier-3 dedup (company + role match) now decides duplicates via two signals:
+// a matching req/job number (title-independent, definitive), or — when a req
+// number can't prove identity — an EXACT title match (see the exact-match
+// regression test above; roleFuzzyMatch was removed from this path entirely
+// after it silently collapsed two unrelated Deepgram postings in production
+// twice). Covers: (a) same-looking titles + different req numbers → NOT a
+// duplicate, (b) same-looking (non-identical) titles + same req number →
+// still a duplicate (req number alone proves it), (c) no req number on either
+// side + non-identical titles → NOT a duplicate (no signal proves they're the
+// same posting — this intentionally changed from the old fuzzy-match-fallback
+// behavior, which was the exact failure mode this guard exists to prevent),
+// (d) req number on only one side + identical titles → still a duplicate (the
+// exact-title match alone is sufficient here).
 console.log('\n🧪 Testing merge-tracker req/job-number dedup guard (#1524)...');
 try {
   const reqTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-1524-'));
@@ -4401,13 +4477,19 @@ try {
         fail('(#1524b) same req number should have been deduped away, not added as a new row');
       }
 
-      // (c) No req number on either side: existing fuzzy-match-only behavior preserved — deduped and
-      // updated in place (higher score), not appended as a new row.
+      // (c) No req number on either side, and the titles are NOT identical
+      // ("Curriculum Program Coordinator" vs "...II"): no signal proves these
+      // are the same posting, so both must survive as separate rows. This is
+      // the intentional behavior change — the old fuzzy-match fallback here is
+      // exactly the failure mode that silently collapsed two real, unrelated
+      // Deepgram postings in production (see the exact-match regression test).
       const coordinatorRows = reqRows.filter(r => r.includes('Curriculum Program Coordinator'));
-      if (coordinatorRows.length === 1 && coordinatorRows[0].includes('3.9/5')) {
-        pass('(#1524c) no req number on either side → fuzzy-match behavior unchanged (updated in place)');
+      const coordinatorOriginal = coordinatorRows.find(r => r.includes('3.5/5') && !r.includes(' II'));
+      const coordinatorNew = coordinatorRows.find(r => r.includes('Curriculum Program Coordinator II') && r.includes('3.9/5'));
+      if (coordinatorRows.length === 2 && coordinatorOriginal && coordinatorNew) {
+        pass('(#1524c) no req number + non-identical titles → NOT deduped, both rows present');
       } else {
-        fail(`(#1524c) fuzzy-match-only behavior regressed: expected 1 'Curriculum Program Coordinator' row at 3.9/5, got ${coordinatorRows.length}`);
+        fail(`(#1524c) expected 2 distinct 'Curriculum Program Coordinator' rows (3.5/5 original + 3.9/5 "II"), got ${coordinatorRows.length}`);
       }
 
       // (d) Req number on only one side (existing row has "Job 2026-55501", addition has none):

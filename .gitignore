@@ -1,5 +1,6 @@
 # Personal data (user fills these)
 cv.md
+article-digest.md
 data/applications.md
 data/applications.db
 data/follow-ups.md
@@ -107,3 +108,7 @@ package-lock.json
 
 # Planning (local scratchpad)
 plan/
+
+# Throwaway scratch/test scripts written during the Investigate-Plan-Test-Implement
+# workflow's Testing phase (see plans/07-17-26_pipeline-efficiency-and-personalization.md) — disposable, never committed.
+process/scripts/

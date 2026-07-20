@@ -85,6 +85,8 @@ node reserve-report-num.mjs --release 042-049
 
 ## Mode B: Standalone script
 
+**Populating `batch-input.tsv` from `data/pipeline.md`:** if your pending offers already live in `data/pipeline.md` (e.g. from `scan.mjs` or manual pasting) rather than being collected live via the conductor, run `node pipeline-to-batch-input.mjs` first — it reads the `## Pending` section, skips already-processed (`- [x]`) and errored (`- [!]`) lines, and writes `batch/batch-input.tsv` in the `id\turl\tsource\tnotes` format below. Use `--dry-run` to preview and `--limit N` to cap how many rows get written. This is the recommended path for large backlogs (roughly >5 offers) instead of the manual Agent-tool fan-out in `modes/pipeline.md` — it gets automatic retry, `--resume-paused` handling for session-limit hits, and an automatic end-of-run `merge-tracker.mjs` → `reconcile-pipeline.mjs` → `verify-pipeline.mjs` chain. Small batches (≤5) can still use the manual pipeline.md fan-out for tighter interactive control.
+
 ```bash
 batch/batch-runner.sh [OPTIONS]
 ```

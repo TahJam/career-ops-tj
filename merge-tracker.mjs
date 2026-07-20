@@ -7,7 +7,7 @@
  * - 8-col: num\tdate\tcompany\trole\tstatus\tscore\tpdf\treport (no notes)
  * - Pipe-delimited (markdown table row): | col | col | ... |
  *
- * Dedup: company normalized + role fuzzy match + report number match
+ * Dedup: company normalized + role exact match + report number match
  * If duplicate with higher score → update in-place, update report link
  * Validates status against states.yml (rejects non-canonical, logs warning)
  *
@@ -19,7 +19,7 @@ import { join, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
-import { roleFuzzyMatch } from './role-matcher.mjs';
+import { roleExactMatch } from './role-matcher.mjs';
 import { LEGACY_COLMAP, detectColumns, resolveScoreStatus, normalizeVia } from './tracker-parse.mjs';
 import { resolveTrackerPath, trackerLockDirFor, acquireTrackerLock, writeFileAtomic, normalizeCompany, cell } from './tracker-utils.mjs';
 
@@ -558,12 +558,30 @@ for (const file of tsvFiles) {
   }
 
   if (!duplicate) {
-    // Company + role fuzzy match
+    // Company + role match, via one of two independent signals:
+    //  (i)  Matching req/job number on both sides (#1524) — definitive, title-
+    //       independent proof of the same posting (employers like TD commonly
+    //       run concurrent near-identical L&D/HR titles distinguished only by
+    //       req#, and a repost is sometimes reworded but keeps its req#).
+    //  (ii) Exact (normalized) role-title match — the fallback whenever a req
+    //       number can't prove identity (absent on one or both sides).
+    //       Previously fell back to roleFuzzyMatch (token-overlap Jaccard >=
+    //       0.6), but that heuristic is trivially defeated by short titles
+    //       whose entire content-token sets nearly or fully coincide (e.g.
+    //       "Senior Solutions Architect - Europe" vs "Solutions Architect (EST
+    //       or PST)" both reduce to {solutions, architect} -> Jaccard 1.0),
+    //       causing two genuinely different postings to silently overwrite one
+    //       another. dedup-tracker.mjs hit the same bug class and deliberately
+    //       switched to exact matching for the same reason (see its
+    //       docstring) — this merge path, which performs an unattended
+    //       overwrite rather than a human-reviewed cleanup pass, is a strictly
+    //       more dangerous place to keep the fuzzy heuristic. A false "not a
+    //       duplicate" here merely adds an extra row a human can dedupe later;
+    //       a false "duplicate" silently destroys the other row's data.
     const normCompany = normalizeCompany(addition.company);
     const additionReqNum = extractReqNumber(addition.notes);
     duplicate = existingApps.find(app => {
       if (normalizeCompany(app.company) !== normCompany) return false;
-      if (!roleFuzzyMatch(addition.role, app.role)) return false;
       // Cross-channel guard (#1596): unknown-employer rows (`?`) all normalize
       // to the same empty company key, but the same role via two DIFFERENT
       // agencies is two real submissions — merging them silently is exactly
@@ -573,16 +591,16 @@ for (const file of tsvFiles) {
       // collapse distinct non-Latin agency names to the same empty key.
       if ((String(addition.company).trim() === '?' || String(app.company).trim() === '?')
           && normalizeVia(addition.via || '') !== normalizeVia(app.via || '')) return false;
-      // Req/job-number guard (#1524): a similarly-worded title at the same
-      // company can still be a genuinely distinct posting when a req/job
-      // number in the Notes column proves it (employers like TD commonly run
-      // concurrent near-identical L&D/HR titles distinguished only by req#).
-      // Only treat this as evidence the rows differ when BOTH sides carry an
-      // extractable number and they disagree — if either side has none, fall
-      // back to today's fuzzy-match-only behavior unchanged.
+
       const appReqNum = extractReqNumber(app.notes);
-      if (additionReqNum && appReqNum && additionReqNum !== appReqNum) return false;
-      return true;
+      if (additionReqNum && appReqNum) {
+        // Both sides carry a req/job number: it alone decides, regardless of
+        // title wording — this is (i) above.
+        return additionReqNum === appReqNum;
+      }
+      // At least one side has no req number to prove/disprove identity: fall
+      // back to (ii), an exact title match.
+      return roleExactMatch(addition.role, app.role);
     });
   }
 
