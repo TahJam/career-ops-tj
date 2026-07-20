@@ -5,11 +5,16 @@ data/applications.md
 data/applications.db
 data/follow-ups.md
 data/salary-observations.tsv
+data/status-log.tsv
+data/assessments.tsv
 data/pipeline.md
 data/scan-history.tsv
 data/scan-runs.tsv
+data/portal-health.tsv
+data/blacklist.md
 data/pdf-index.tsv
 data/agent-inbox.md
+data/active-interviews.md
 data/reply-candidates.json
 data/parser-output/**/*.json
 !data/parser-output/.gitkeep
@@ -18,6 +23,7 @@ data/cache/ats-companies/
 # Received offers/contracts, promise notes, prep reports (PII — never commit)
 data/offers/*
 !data/offers/.gitkeep
+data/upskill/
 reports/*.md
 !reports/.gitkeep
 output/*
@@ -56,11 +62,14 @@ writing-samples/*
 
 # User config and customization (never auto-updated)
 config/profile.yml
+config/cv-facts.json
+config/benchmarks.yml
 portals.yml
 modes/_profile.md
 modes/_custom.md
 .update-dismissed
 .update-lock
+.manifesto-noted
 
 # Plugin layer — opt-in toggles + user-installed plugins + integrity lock (never auto-updated)
 config/plugins.yml
@@ -112,3 +121,6 @@ plan/
 # Throwaway scratch/test scripts written during the Investigate-Plan-Test-Implement
 # workflow's Testing phase (see plans/07-17-26_pipeline-efficiency-and-personalization.md) — disposable, never committed.
 process/scripts/
+
+# Web
+.career-ops-web/logo-cache/
