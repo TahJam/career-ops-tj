@@ -412,11 +412,7 @@ Best,
 
 ## Language
 
-- Match the JD/report language.
-- If the JD is Chinese, use Simplified Chinese.
-- If the company/recruiter language is unknown, default to the user's language.
-- Keep the subject line in the same language as the body unless the user asks
-  otherwise.
+All output, including the subject line, is in English.
 
 ---
 

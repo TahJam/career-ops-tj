@@ -15,23 +15,6 @@ You receive a job URL plus a local JD text file and must produce:
 
 ---
 
-## Language Rule
-
-Before writing any user-visible prose, read `config/profile.yml` if it exists.
-
-- Resolve `language.output`; default to `en` when the key is absent.
-- `language.output` controls all human-facing output: report prose, report headings, tracker notes, PDF text, cover/application text if any, and final user-facing summaries.
-- `language.modes_dir`, when present, supplies market vocabulary and local evaluation rules only. It must not force the prose language.
-
-**Write all human-facing output in `language.output`, regardless of the language of this prompt or the job description.** Keep machine-readable field names exactly as specified. Keep market-specific terms from `language.modes_dir` when relevant, but explain them in `language.output` when needed.
-
-Examples:
-
-- `language.output: en` + `language.modes_dir: modes/de` → write the report in English, using DACH market concepts where relevant.
-- Missing `language.output` → write in English.
-
----
-
 ## Sources of Truth (read before evaluating)
 
 | File | Path | When |
@@ -333,7 +316,7 @@ Report header:
 **Score:** {X.X/5}
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **URL:** {{URL}}
-**PDF:** {output/cv-candidate-{company-slug}-{{DATE}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise a localized equivalent of `not generated — run /career-ops pdf {company-slug} to create on demand` in `language.output`}
+**PDF:** {output/cv-candidate-{company-slug}-{{DATE}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {company-slug} to create on demand`}
 **Batch ID:** {{ID}}
 
 
@@ -384,7 +367,7 @@ Then include:
 - `## Risk Summary`
 - `## Extracted Keywords`
 
-Translate these human-facing headings according to `language.output` when it is not English. Keep `## Machine Summary` and YAML keys exact for downstream parsers.
+Keep `## Machine Summary` and YAML keys exact for downstream parsers.
 
 ### Step 4 — Generate PDF (configurable)
 
@@ -393,7 +376,7 @@ Read `config/profile.yml` and resolve `auto_pdf_score_threshold`. If absent, def
 Only generate the PDF when the score from Step 2 is greater than or equal to the threshold. If the score is below the threshold:
 
 - Skip PDF generation.
-- In the report header, write a localized equivalent of `**PDF:** not generated — run /career-ops pdf {company-slug} to create on demand` in `language.output`.
+- In the report header, write `**PDF:** not generated — run /career-ops pdf {company-slug} to create on demand`.
 - In Step 5, use `pdf_emoji` = `❌`.
 - In Step 6, set `"pdf": null`.
 
@@ -401,7 +384,7 @@ If score is greater than or equal to the threshold:
 
 1. Read `cv.md`, `article-digest.md`, and `templates/cv-template.html`.
 2. Extract 15-20 JD keywords.
-3. Use `language.output` for CV prose.
+3. Write CV prose in English.
 4. Choose paper format: US/Canada -> `letter`; otherwise `a4`.
 5. Adapt framing to the detected archetype.
 6. Rewrite the Professional Summary with real evidence and relevant keywords.
@@ -532,7 +515,7 @@ Failure:
 
 1. Read the candidate sources before evaluating.
 2. Apply user-specific rules from `modes/_profile.md` and `config/profile.yml`.
-3. Follow `language.output` for human-facing output.
+3. Write all human-facing output in English.
 4. Detect the role archetype and adapt the framing.
 5. Cite exact evidence from the CV or proof-point files.
 6. Use WebSearch for compensation and company context when possible.

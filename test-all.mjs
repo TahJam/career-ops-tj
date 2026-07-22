@@ -1198,14 +1198,10 @@ try {
   fail(`CRLF regression guard crashed: ${e.message}`);
 }
 
-if (
-  /language\.output/.test(outputLanguageAgentsDoc) &&
-  /human-facing output/i.test(outputLanguageAgentsDoc) &&
-  /modes_dir/.test(outputLanguageAgentsDoc)
-) {
-  pass('AGENTS.md documents output language separately from market modes');
+if (/language\.output.*unused/i.test(outputLanguageAgentsDoc)) {
+  pass('AGENTS.md documents that language.output/modes_dir are unused in this fork');
 } else {
-  fail('AGENTS.md does not document the language.output vs modes_dir contract');
+  fail('AGENTS.md should note that language.output/modes_dir are unused in this fork');
 }
 
 const marketModeDocs = [
@@ -1237,16 +1233,16 @@ for (const [docName, docText] of marketModeDocs) {
   }
 }
 
-if (/language\.output/.test(careerOpsSkill) && /human-facing output/i.test(careerOpsSkill)) {
-  pass('career-ops skill injects the output language rule');
+if (!/language\.output/.test(careerOpsSkill)) {
+  pass('career-ops skill router carries no unused language.output directive (English-only fork)');
 } else {
-  fail('career-ops skill does not inject the output language rule');
+  fail('career-ops skill router still references language.output — should be English-only in this fork');
 }
 
-if (/Language Rule/i.test(batchPrompt) && /language\.output/.test(batchPrompt) && /write all human-facing output/i.test(batchPrompt)) {
-  pass('batch prompt honors language.output for worker prose');
+if (/Canonical base language:\s*English\./.test(batchPrompt) && !/language\.output/.test(batchPrompt)) {
+  pass('batch prompt is fixed to English with no unused language.output logic');
 } else {
-  fail('batch prompt does not honor language.output for worker prose');
+  fail('batch prompt should declare a fixed English language with no language.output resolution logic');
 }
 
 const batchEvaluationInputs = batchPrompt.match(/### Step 2 \u2014 Evaluate A-G([\s\S]*?)#### Step 0 \u2014 Archetype Detection/)?.[1] ?? '';
@@ -3060,7 +3056,6 @@ if (
 const criticalRoutingContracts = [
   ['paste-a-JD auto-pipeline', /Pastes JD or URL\s*\|\s*auto-pipeline/],
   ['PDF mode', /generate CV\/PDF\s*\|\s*`pdf`/i],
-  ['language modes_dir override', /language\.modes_dir:\s*modes\/(?:\{lang\}|de)/],
   ['doctor --json onboarding', /node doctor\.mjs --json/],
 ];
 for (const [name, marker] of criticalRoutingContracts) {
@@ -3161,15 +3156,10 @@ if (
 }
 
 const agentsDoc = readFile('AGENTS.md');
-if (
-  /CODEX\.md/.test(agentsDoc) &&
-  /codex exec/.test(agentsDoc) &&
-  /Codex/i.test(agentsDoc) &&
-  /(slash commands?.*not guaranteed|prompt|\/career-ops.*unavailable)/i.test(agentsDoc)
-) {
-  pass('AGENTS.md includes CODEX.md and Codex-specific command guidance');
+if (/CODEX\.md/.test(agentsDoc)) {
+  pass('AGENTS.md still references CODEX.md in the data-contract file list');
 } else {
-  fail('AGENTS.md is missing CODEX.md or Codex command guidance');
+  fail('AGENTS.md should still list CODEX.md in its data-contract file list');
 }
 
 console.log('\n12a. Skill entrypoint materialization');

@@ -83,13 +83,7 @@ To rollback: `node update-system.mjs rollback`
 
 ## What is career-ops
 
-AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing. Runs on any AI coding CLI that follows the [open agent skill standard](https://agentskills.io) (Claude Code, Codex, OpenCode, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains available through `gemini-eval.mjs`.
-
-### Codex invocation
-
-- **Interactive Codex:** run `codex` in the repo root. Slash commands are not guaranteed in Codex, so ask Codex to run the requested mode directly if `/career-ops` is unavailable.
-- **Headless Codex:** use `codex exec "prompt"` for one-shot workers.
-- **Examples:** `Run career-ops scan mode`, `Run career-ops pipeline mode for data/pipeline.md`, `Run career-ops pdf mode`, `Run career-ops tracker mode`, `Evaluate this JD with career-ops auto-pipeline: https://company.com/jobs/123`
+AI-powered job search automation built on Claude Code: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing.
 
 ### Main Files
 
@@ -145,14 +139,6 @@ node doctor.mjs --json
 Output: `{"onboardingNeeded": <bool>, "missing": [...], "warnings": [...], "autoCopied": [...]}`, where `missing` lists whichever of `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml` are absent. `warnings` is reserved for non-blocking setup signals, and `autoCopied` lists user customization files (`modes/_profile.md` or `modes/_custom.md`) that `doctor.mjs` automatically copied from their template equivalents (`modes/_profile.template.md` or `modes/_custom.template.md`) during the check.
 
 - **If `onboardingNeeded` is true (any of `cv.md` / `config/profile.yml` / `modes/_profile.md` / `portals.yml` is missing), enter onboarding mode.** Do NOT proceed with evaluations, scans, or any other mode until the basics are in place. Guide the user step by step:
-
-#### Step 0: Free Tier Check
-
-If the user mentions cost, pricing, budget, or asks about free alternatives during onboarding, proactively surface the free path:
-
-> "career-ops works fully on Antigravity CLI's free tier — no API key or paid subscription needed. See [FREE_TIER.md](docs/FREE_TIER.md) for setup, daily limits, and batch tips."
-
-If the user is already on a paid plan (Claude Max, Google AI, etc.) or does not mention cost, skip this step silently.
 
 #### Step 1: CV (required)
 If `cv.md` is missing, ask:
@@ -217,8 +203,8 @@ Store any insights the user shares in `config/profile.yml` (under narrative), `m
 Once all files exist, confirm:
 > "You're all set! You can now:
 > - Paste a job URL to evaluate it
-> - Run the scan entrypoint for your CLI to search portals: `/career-ops scan`, `/career-ops-scan`, or ask Codex to run `scan`
-> - Open the command menu for your CLI: `/career-ops`, the CLI-specific alias, or ask Codex to show the available career-ops modes
+> - Run `/career-ops scan` to search portals
+> - Run `/career-ops` to open the command menu
 >
 > Everything is customizable — just ask me to change anything.
 >
@@ -227,7 +213,7 @@ Once all files exist, confirm:
 Then suggest automation:
 > "Want me to scan for new offers automatically? I can set up a recurring scan every few days so you don't miss anything. Just say 'scan every 3 days' and I'll configure it."
 
-If the user accepts, use the `/loop` or `/schedule` skill (if available) to set up a recurring scan entrypoint for their CLI (`/career-ops scan`, `/career-ops-scan`, or the equivalent Codex prompt). If those aren't available, suggest adding a cron job or remind them to run the scan mode periodically.
+If the user accepts, use the `/loop` or `/schedule` skill (if available) to set up a recurring `/career-ops scan`. If those aren't available, suggest adding a cron job or remind them to run `/career-ops scan` periodically.
 
 ### Personalization
 
@@ -243,32 +229,7 @@ This system is designed to be customized by YOU (AI Agent). When the user asks y
 
 ### Language Modes
 
-Default modes are in `modes/` (English). This fork removed the 16 non-English language-mode directories (`modes/ar,da,de,es,fr,hi,id,it,ja,ko,pl,pt,ru,tr,ua,zh/`) that shipped upstream — see `plans/07-17-26_pipeline-efficiency-and-personalization.md` — since this candidate's search is US-only and English-only, and they were never auto-loaded without an explicit `language.modes_dir` opt-in anyway. If a non-English-market search is ever needed again, re-pull the relevant directory from the upstream career-ops repo.
-
-### Output Language vs Market Modes
-
-`config/profile.yml` may set:
-
-```yaml
-language:
-  output: en
-  modes_dir: modes/de
-```
-
-These are two separate axes:
-
-- `language.output` controls human-facing output: reports, tracker notes, PDFs, cover letters, outreach, interview prep, form answers, and any user-visible prose. Default: `en` when absent.
-- `language.modes_dir` controls market vocabulary and local evaluation rules (only relevant if a language-mode directory has been re-pulled from upstream, since this fork ships English-only).
-
-**Composition rule:** `language.output` is authoritative for prose. `modes_dir` only supplies market context, and stays unset in this fork.
-
-**Agent rule:** After loading the mode instructions and user profile, inject this directive into every mode and subagent prompt:
-
-> Write all human-facing output in `{language.output}` regardless of the language of these instructions or the job description. Keep market-specific terms from `language.modes_dir` when they are relevant, but explain them in the output language when needed.
-
-**Re-enabling a market mode:** if the user re-pulls a language-mode directory from upstream, they opt in by setting `language.modes_dir: modes/de` (or the relevant `modes/{lang}` path) in `config/profile.yml`.
-
-**When NOT to switch market modes:** If the user applies to English-language roles, use the default English market modes — *unless* `language.modes_dir` is set in `config/profile.yml` (the explicit user preference always wins). This does not override `language.output`; prose still follows `language.output`.
+Default modes are in `modes/` (English). This fork removed the 16 non-English language-mode directories (`modes/ar,da,de,es,fr,hi,id,it,ja,ko,pl,pt,ru,tr,ua,zh/`) that shipped upstream — see `plans/07-17-26_pipeline-efficiency-and-personalization.md` — since this candidate's search is US-only and English-only, and they were never auto-loaded without an explicit `language.modes_dir` opt-in anyway. If a non-English-market search is ever needed again, re-pull the relevant directory from the upstream career-ops repo. This fork's output is always English; the upstream `language.output`/`language.modes_dir` config keys are unused.
 
 ### Skill Modes
 
@@ -354,17 +315,7 @@ This project practices CareerOps (see `MANIFESTO.md`). When you finish helping a
 
 ## Headless / Batch Mode
 
-When spawning headless workers for batch processing, use the appropriate command for your CLI:
-
-| CLI | Command |
-|-----|---------|
-| Claude Code | `claude -p "prompt"` |
-| **OpenCode** | `opencode run "prompt"` |
-| Copilot CLI | `copilot -p "prompt"` |
-| Codex | `codex exec "prompt"` |
-| Qwen | `qwen -p "prompt"` |
-| Antigravity CLI | `agy -p "prompt"` |
-| Grok Build CLI | `grok -p "prompt"` |
+When spawning headless workers for batch processing, use `claude -p "prompt"`.
 
 **Parallel fan-outs — reserve report numbers first.** When orchestrating N parallel evaluators (headless workers, subagents, or multiple agent windows), reserve the report-number range before spawning: `node reserve-report-num.mjs --count N` prints e.g. `042-049`; hand each worker its own number. The allocator treats report files, sentinels, tracker row IDs, and tracker report links as occupied. Each slot claim is individually atomic; the contiguous range is an ergonomic allocation, not an all-or-nothing transaction — on collision the partially claimed slots are released and the reservation restarts past the collision. Release with `node reserve-report-num.mjs --release 042-049` when done (stale sentinels are GC'd after 4h, so reserve right before spawning; collision restarts leave permanent — harmless — gaps in the sequence). Never let parallel workers compute `max+1` themselves — that is the #749 race.
 

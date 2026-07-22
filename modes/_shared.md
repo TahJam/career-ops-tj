@@ -38,21 +38,14 @@ The files below are the **ONLY** sources for user-facing content (CV, cover lett
 
 **Resolution:** Read `spend_tier` from `config/profile.yml`. If the key is absent, default to `standard` (back-compat for existing profiles). Any value other than the three below is treated as invalid -- fall back to `standard` and note the issue to the user once.
 
-**Tier -> model mapping (the only place model/provider names appear in this logic, one row per CLI -- see the Headless / Batch Mode table in `AGENTS.md` for the canonical CLI list):**
+**Tier -> model mapping (this fork runs on Claude Code only):**
 
-| CLI | economy | standard | premium | Extended thinking |
-|-----|---------|----------|---------|--------------------|
-| Claude Code | Haiku 4.5 | Sonnet 4.6 | Opus 4.8 | off / off / adaptive |
-| OpenCode | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
-| Gemini CLI | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
-| Copilot CLI | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
-| Codex | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
-| Qwen | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
-| Antigravity CLI | your CLI's cheapest/fastest available model | balanced model | most capable model | off / off / adaptive |
+- economy -> Haiku 4.5
+- standard -> Sonnet 4.6
+- premium -> Opus 4.8
+- Extended thinking: off / off / adaptive
 
-The Claude Code row uses concrete model names because that lineup is well-established. The other rows intentionally avoid naming specific models -- nobody on this project can verify current model lineups for those CLIs with confidence, and a wrong specific guess routes users to a model that doesn't exist. If you actively use one of these CLIs and know its current cheapest/balanced/most-capable models, a follow-up PR filling in concrete names for that row is welcome.
-
-Every other reference to tier elsewhere in the modes (batch.md, pipeline.md, etc.) MUST refer to it only as "the economy/standard/premium tier" or "the tier's model" -- never repeat a hardcoded model/provider name outside this table. This keeps the routing logic model-agnostic: if any CLI's mapping changes, only that row in this table needs to change.
+Every other reference to tier elsewhere in the modes (batch.md, pipeline.md, etc.) MUST refer to it only as "the economy/standard/premium tier" or "the tier's model" -- never repeat a hardcoded model name outside this list. This keeps the routing logic in one place: if the mapping changes, only this list needs to change.
 
 **Output parity:** The model used for evaluation never changes the A-F report structure, headers, or sections. All three tiers produce an evaluation in the exact same format described below and in `modes/oferta.md`.
 

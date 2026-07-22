@@ -109,8 +109,7 @@ that there is **no contact discovery**.
      **Default 150** when the key is absent. The message MUST fit — count and trim.
    - **Lead with a specific value proposition** (the single strongest match point),
      not an introduction. Punchy sentences, not paragraphs.
-   - **Language:** match the JD / platform language (e.g. Simplified Chinese for
-     BOSS Zhipin). Character count applies to the output language.
+   - **Language:** always English.
 
 5. **No-fluff policy (hard):** remove filler and replace it with a concrete value
    prop. Ban phrases like "I'm looking for a job", "I'm passionate about",
