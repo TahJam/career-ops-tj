@@ -975,9 +975,13 @@ main() {
             running=$((running - 1))
           fi
         done
-        # Compact arrays
-        pids=("${pids[@]}")
-        pid_ids=("${pid_ids[@]}")
+        # Compact arrays. Bash 3.2 (macOS's shipped /bin/bash) treats
+        # "${arr[@]}" on a zero-element array as an unbound-variable error
+        # under `set -u`, fatally killing the script instead of producing an
+        # empty array (fixed upstream in bash 4.4+). Guard with a length
+        # check first -- ${#arr[@]} on an empty array is always safe.
+        (( ${#pids[@]} > 0 )) && pids=("${pids[@]}")
+        (( ${#pid_ids[@]} > 0 )) && pid_ids=("${pid_ids[@]}")
         if [[ "$BATCH_PAUSED" == "true" || -f "$PAUSE_FILE" ]]; then
           echo "=== Batch paused: session/rate limit reached. Waiting for running workers, not scheduling new offers. ==="
           break
@@ -996,10 +1000,14 @@ main() {
       running=$((running + 1))
     done
 
-    # Wait for remaining workers
-    for pid in "${pids[@]}"; do
-      wait "$pid" 2>/dev/null || true
-    done
+    # Wait for remaining workers. Same bash 3.2 empty-array guard as above --
+    # `for pid in "${pids[@]}"` on a drained array is a common end-of-batch
+    # case (e.g. batch size <= PARALLEL), not an edge case.
+    if (( ${#pids[@]} > 0 )); then
+      for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+      done
+    fi
   fi
 
   # Merge tracker additions
