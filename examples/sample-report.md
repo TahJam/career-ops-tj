@@ -61,12 +61,9 @@
 
 ## F) Interview Plan
 
-| # | JD Requirement | STAR Story | S | T | A | R |
-|---|---------------|------------|---|---|---|---|
-| 1 | Production LLM systems | FraudShield scaling | 10K TPS requirement | Built streaming pipeline | Kafka + ensemble + feature store | 99.7% precision, $2M saved |
-| 2 | Team leadership | ML Platform team | 4 teams needed MLOps | Led 3-eng team, built platform | Registry + A/B + feature store | Deploy time 2 weeks → 4 hours |
+**(full prep deferred — ask when it's actually needed)**
 
-**Recommended case study:** LLM Eval Toolkit -- shows LLM-specific expertise + open source impact
+**Quick take:** The FraudShield production-scaling story (10K TPS, Kafka + ensemble + feature store, 99.7% precision) is the strongest match for the JD's "production LLM systems" requirement.
 
 ---
 

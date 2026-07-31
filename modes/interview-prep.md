@@ -2,6 +2,16 @@
 
 When the user asks to prep for an interview at a specific company+role, or when an evaluation scores 4.0+ and the user updates status to `Interview`, run this mode.
 
+## Auto-trigger (heard-back path)
+
+This is not just a standing description — it is a real workflow step. When the user reports hearing back from a company / getting invited to interview ("heard back from {company}", "they want to interview me", "got a call for {role}"), do not stop at the tracker update:
+
+1. Match the company+role against `data/applications.md` (reuse `invite-match.mjs` if the message text is ambiguous) and confirm with the user which row it is, if more than one candidate matches.
+2. Propose the status change to `Interview` via `node set-status.mjs <report#|company> Interview [--note]` and wait for explicit confirmation before writing (see `modes/reply-watch.md` Step 2 for the same HITL pattern) — never write silently.
+3. Once the status update is confirmed, immediately offer to run this mode for that company+role: "Want me to generate the interview-prep kit for {company} now?" If yes, proceed with Step 1 below, feeding in the existing evaluation report's archetype/gaps (see Inputs #2).
+
+This closes the loop that evaluation-time Block F used to (poorly) approximate — the deep prep now happens once, exactly when it's needed, instead of a shallow version happening on every evaluation regardless of outcome.
+
 ## Inputs
 
 1. **Company name** and **role title** (required)

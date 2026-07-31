@@ -42,7 +42,7 @@ If deeper company research is useful, recommend running `/career-ops deep` separ
 Classify the job into one of the 6 archetypes (see `_shared.md`). If it is a hybrid, indicate the 2 closest ones. This determines:
 - Which proof points to prioritize in block B
 - How to rewrite the summary in block E
-- Which STAR stories to prepare in block F
+- Which JD requirement gets the "Quick take" story flag in block F
 
 ## Block A — Role Summary
 
@@ -185,26 +185,11 @@ Top 5 changes to CV + Top 5 changes to LinkedIn to maximize match.
 
 ## Block F — Interview Plan
 
-6-10 STAR+R stories mapped to JD requirements (STAR + **Reflection**):
+**(full prep deferred — ask when it's actually needed)**
 
-| # | JD Requirement | STAR+R Story | S | T | A | R | Reflection |
-|---|-----------------|-----------------|---|---|---|---|------------|
+Full interview prep (6-10 STAR+R stories, red-flag rehearsal, case-study pick, story-bank updates) is generated on demand once there's an actual interview, via `interview-prep` — not on every evaluation. Tell the candidate: run `/career-ops interview-prep` or just say "I heard back from {company}" once that happens, and this report's archetype + gaps feed in automatically.
 
-The **Reflection** column captures what was learned or what would be done differently. This signals seniority — junior candidates describe what happened, senior candidates extract lessons.
-
-**Story Bank:** If `interview-prep/story-bank.md` exists, check if any of these stories are already there. If not, append new ones. Over time this builds a reusable bank of 5-10 master stories that can be adapted to any interview question.
-
-**Selected and framed according to the archetype:**
-- FDE → emphasize delivery speed and client-facing
-- SA → emphasize architectural decisions
-- PM → emphasize discovery and trade-offs
-- LLMOps → emphasize metrics, evals, production hardening
-- Agentic → emphasize orchestration, error handling, HITL
-- Transformation → emphasize adoption, organizational change
-
-Also include:
-- 1 recommended case study (which of their projects to present and how)
-- Red-flag questions and how to answer them (e.g., "why did you sell your company?", "do you have a team of reports?")
+**Quick take:** {1 sentence — the single JD requirement in Block B with the strongest existing story opportunity from cv.md, so this isn't zero signal even pre-interview}
 
 ## Block G — Posting Legitimacy
 

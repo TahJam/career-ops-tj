@@ -69,3 +69,7 @@ Apply recommended status updates to data/applications.md? (y/N):
 ```
 
 Type `y` or `yes` to apply the changes. The script will rewrite the matched rows in `data/applications.md` and rebuild the derived SQLite index.
+
+## Step 3 — Offer interview-prep on a fresh Interview transition
+
+For any row just updated `→ Interview` in Step 2, ask the user once, per company: "Want me to generate the interview-prep kit for {company} now?" If yes, run `modes/interview-prep.md` for that company+role (it will read the existing evaluation report for archetype/gaps). If no or no response, stop here — nothing runs automatically. Rows updated to any other status, or left unconfirmed in Step 2, skip this step.

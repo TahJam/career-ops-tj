@@ -176,15 +176,13 @@ Include top CV changes and LinkedIn/profile framing changes.
 
 #### Block F — Interview Plan
 
-Provide 6-10 STAR+R stories mapped to JD requirements:
+**(full prep deferred — ask when it's actually needed)**
 
-| # | JD requirement | STAR+R story | S | T | A | R | Reflection |
-|---|----------------|--------------|---|---|---|---|------------|
+Full interview prep (6-10 STAR+R stories, red-flag rehearsal, case-study pick, story-bank updates) is generated on demand once there's an actual interview, via `interview-prep` — not on every batch evaluation.
 
-Also include:
+Provide exactly:
 
-- one recommended case study
-- likely red-flag questions and how to answer them
+**Quick take:** {1 sentence — the single JD requirement in Block B with the strongest existing story opportunity from cv.md, so this isn't zero signal even pre-interview}
 
 #### Block G — Posting Legitimacy
 
