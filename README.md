@@ -76,7 +76,7 @@
 
 ## What Is This
 
-> **This fork is optimized for Claude Code and English-only output.** Upstream career-ops supports many AI coding CLIs and output languages; this variant strips that generality — the non-English language-mode directories, other-CLI routing and documentation, and the `language.output`/market-mode config layer are removed wherever they added token cost or complexity without adding value for a Claude Code, English-only setup. Want the general-purpose, multi-CLI, multi-language version instead? Use [upstream career-ops](https://github.com/santifer/career-ops).
+> **This fork is optimized for Claude Code and English-only output.** Upstream career-ops supports many AI coding CLIs and output languages; this variant strips that generality — the non-English language-mode directories, other-CLI routing and documentation, and the `language.output`/market-mode config layer are removed wherever they added token cost or complexity without adding value for a Claude Code, English-only setup. It also defers interview prep out of the evaluation pass: the per-JD evaluation report's Interview Plan block is a one-line stub, not a full STAR-story/case-study/red-flag pack, since most evaluated jobs never reach an interview — the full `interview-prep` kit now generates on demand once one does. Want the general-purpose, multi-CLI, multi-language version, or the eager per-evaluation interview prep, instead? Use [upstream career-ops](https://github.com/santifer/career-ops).
 
 Career-Ops ([career-ops.org](https://career-ops.org), also known as **careerops**) turns any AI coding CLI into a full job search command center. Instead of manually tracking applications in a spreadsheet, you get an AI-powered pipeline that:
 
