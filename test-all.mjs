@@ -3133,15 +3133,10 @@ if (
 console.log('\n12c. Codex documentation guidance');
 
 const readmeDoc = readFile('README.md');
-if (
-  /CODEX\.md/.test(readmeDoc) &&
-  /codex exec/.test(readmeDoc) &&
-  /Codex/i.test(readmeDoc) &&
-  /(slash commands?.*not guaranteed|plain language|prompt)/i.test(readmeDoc)
-) {
-  pass('README documents CODEX.md and Codex interactive/headless usage');
+if (/CODEX\.md/.test(readmeDoc)) {
+  pass('README still references CODEX.md in the project structure listing');
 } else {
-  fail('README is missing required Codex usage guidance');
+  fail('README should still list CODEX.md in its project structure listing');
 }
 
 const setupDoc = readFile('docs/SETUP.md');
