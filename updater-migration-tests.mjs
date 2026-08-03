@@ -12,7 +12,7 @@
  * coverage manifest) stay internally consistent.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 
 let passed = 0;
 let failed = 0;
@@ -50,6 +50,33 @@ const systemPaths = extractArray('SYSTEM_PATHS');
 const userPaths = extractArray('USER_PATHS');
 const bootstrapPaths = extractArray('BOOTSTRAP_PATHS');
 
+// Every concrete (non-directory) manifest entry (SYSTEM_PATHS or
+// BOOTSTRAP_PATHS) must exist in the working tree. A path deleted upstream
+// but left in the manifest survives as a permanent `error: pathspec ...` in
+// every user's upgrade output (#2002). Directory entries (trailing '/') are
+// exempt: git checkout of a directory pathspec tolerates content drift
+// inside it. Add an entry to ALLOWED_MISSING_ENTRIES only with a comment
+// justifying why it may legitimately be absent.
+// Non-English README translations this fork deliberately removes via
+// .update-exclude (English-only fork) — legitimately absent, not stale.
+const ALLOWED_MISSING_ENTRIES = new Set([
+  'README.ar.md', 'README.cn.md', 'README.da.md', 'README.de.md',
+  'README.es.md', 'README.fr.md', 'README.hi.md', 'README.ja.md',
+  'README.ko-KR.md', 'README.pl.md', 'README.pt-BR.md', 'README.ru.md',
+  'README.ta.md', 'README.tr.md', 'README.ua.md', 'README.zh-TW.md',
+]);
+for (const [listName, entries] of [['SYSTEM_PATHS', systemPaths], ['BOOTSTRAP_PATHS', bootstrapPaths]]) {
+  for (const entry of entries) {
+    if (entry.endsWith('/')) continue;
+    if (ALLOWED_MISSING_ENTRIES.has(entry)) continue;
+    if (existsSync(entry)) {
+      pass(`${listName} entry exists on disk: ${entry}`);
+    } else {
+      fail(`${listName} entry missing from tree (stale manifest entry, #2002): ${entry}`);
+    }
+  }
+}
+
 const requiredSystemPaths = [
   'modes/email.md',
   'modes/followup.md',
@@ -69,6 +96,7 @@ const requiredSystemPaths = [
   '.qwen/',
   '.antigravitycli/skills/',
   '.grok/skills/',
+  '.cursor/skills/',
   'tracker-columns-tests.mjs',
   'updater-migration-tests.mjs',
   'README.ar.md',
@@ -86,6 +114,7 @@ const requiredSystemPaths = [
 
 const requiredBootstrapPaths = [
   '.agents/',
+  '.cursor/skills/',
   '.opencode/skills/',
   '.antigravitycli/skills/',
   '.grok/skills/',

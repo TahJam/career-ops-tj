@@ -26,6 +26,7 @@ modes/id/
 modes/it/
 modes/ja/
 modes/ko/
+modes/nl/
 modes/pl/
 modes/pt/
 modes/ru/
@@ -34,3 +35,28 @@ modes/ua/
 modes/zh/
 modes/zh/interview/
 modes/zh-TW/
+
+# Non-English README translations (Claude Code + English-only fork).
+# Removed 2026-07-21 (see "Personalized career-ops: optimized for Claude only
+# and English language") but never added here until the 2026-08-03 merge
+# surfaced them as unresolved modify/delete conflicts.
+README.ar.md
+README.cn.md
+README.da.md
+README.de.md
+README.es.md
+README.fr.md
+README.hi.md
+README.ja.md
+README.ko-KR.md
+README.pl.md
+README.pt-BR.md
+README.ru.md
+README.ua.md
+README.zh-TW.md
+
+# New non-English README translations upstream added after this fork's
+# original 2026-07-21 cleanup (never existed in this fork's history before
+# the 2026-08-03 merge) — removed for the same English-only reason.
+README.ta.md
+README.tr.md
