@@ -1,0 +1,36 @@
+# Paths this fork has deliberately removed from the upstream system layer and
+# never wants a `node update-system.mjs apply` merge to restore. Read natively
+# by apply() itself (see plans/07-31-26_replace-update-mechanism-with-merge.md):
+# a modify/delete conflict on a listed path auto-resolves to "keep deleted",
+# and a final unconditional sweep catches upstream adding a brand-new file
+# under an excluded directory (which would otherwise auto-merge cleanly with
+# no conflict at all, since there'd be nothing local to conflict with).
+#
+# Format: one path per line, same convention as update-system.mjs's
+# SYSTEM_PATHS array — trailing slash = directory prefix, no trailing slash =
+# exact file. Blank lines and lines starting with # are ignored.
+
+# Non-English language-mode directories (Claude Code + English-only fork).
+# Removed 2026-07-17 — see
+# plans/07-17-26_pipeline-efficiency-and-personalization.md
+modes/ar/
+modes/da/
+modes/de/
+modes/de/interview/
+modes/fr/
+modes/fr/interview/
+modes/hi/
+modes/es/
+modes/es/interview/
+modes/id/
+modes/it/
+modes/ja/
+modes/ko/
+modes/pl/
+modes/pt/
+modes/ru/
+modes/tr/
+modes/ua/
+modes/zh/
+modes/zh/interview/
+modes/zh-TW/

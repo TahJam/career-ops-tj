@@ -3,8 +3,16 @@
 /**
  * update-system.mjs — Safe auto-updater for career-ops
  *
- * Updates ONLY system layer files (modes, scripts, dashboard, templates).
- * NEVER touches user data (cv.md, profile.yml, _profile.md, data/, reports/).
+ * Pulls upstream changes via a real `git merge` against the canonical repo,
+ * rather than wholesale-checking-out a fixed path list. See
+ * plans/07-31-26_replace-update-mechanism-with-merge.md for why: the old
+ * checkout-based design silently discarded any local edit to a system-layer
+ * file (it isn't just about deleted directories — ANY hand-edited
+ * modes/*.md, AGENTS.md, or *.mjs script was wiped on the next apply(), with
+ * no warning). A merge auto-combines non-overlapping local edits with
+ * upstream's changes to the same file, and only stops for genuine conflicts
+ * (both sides touched the same lines) or a deliberately-removed path
+ * (.update-exclude) that upstream still ships.
  *
  * Usage:
  *   node update-system.mjs check      # Check if update available
@@ -13,22 +21,16 @@
  *   node update-system.mjs dismiss    # Dismiss update check
  *
  * See DATA_CONTRACT.md for the full system/user layer definitions.
+ * SYSTEM_PATHS/USER_PATHS/BOOTSTRAP_PATHS below are no longer used to drive
+ * checkout — apply() now merges the whole tree — but stay as the
+ * documentation/coverage manifest read by validate-system-paths-coverage.mjs
+ * and other doc-consistency checks.
  */
 
 import { execFile, execFileSync, execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, rmSync } from 'fs';
-import { join, dirname, posix as pathPosix } from 'path';
+import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-
-// NOTE: this file must stay *self-loading* — no static (top-level) relative
-// imports. A pre-#1245 client's apply() self-reexec checks out ONLY
-// update-system.mjs before re-execing the target updater, so a static top-level
-// relative import here crashes that re-exec with ERR_MODULE_NOT_FOUND on the
-// old→new jump, before the fuller checkout that would materialize the imported
-// module ever runs (#1706). Local modules (e.g. the skill-entrypoints helper
-// under scaffolder/) are instead pulled in lazily at their point of use, by
-// which time the full update stage has already checked them out. The
-// updater-migration and test-all suites enforce this invariant.
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -53,8 +55,6 @@ export const DEFAULT_GIT_FETCH_TIMEOUT_MS = parsePositiveInt(
 export const NPM_INSTALL_TIMEOUT_MS = parsePositiveInt(process.env.CAREER_OPS_NPM_INSTALL_TIMEOUT_MS, 60000);
 export const PLAYWRIGHT_INSTALL_TIMEOUT_MS = parsePositiveInt(process.env.CAREER_OPS_PLAYWRIGHT_INSTALL_TIMEOUT_MS, 120000);
 export const DASHBOARD_REBUILD_TIMEOUT_MS = parsePositiveInt(process.env.CAREER_OPS_DASHBOARD_REBUILD_TIMEOUT_MS, 60000);
-export const UPDATE_PATH_CHECKOUT_BUDGET_MS = parsePositiveInt(process.env.CAREER_OPS_UPDATE_PATH_CHECKOUT_BUDGET_MS, 5000);
-export const REEXEC_BUFFER_TIMEOUT_MS = parsePositiveInt(process.env.CAREER_OPS_REEXEC_BUFFER_TIMEOUT_MS, 60000);
 
 // System layer paths — ONLY these files get updated
 const SYSTEM_PATHS = [
@@ -405,19 +405,6 @@ export function gitTimeoutMs(args) {
   return args[0] === 'fetch' ? DEFAULT_GIT_FETCH_TIMEOUT_MS : DEFAULT_GIT_TIMEOUT_MS;
 }
 
-export function reexecTimeoutMs(updatePathCount = SYSTEM_PATHS.length + BOOTSTRAP_PATHS.length) {
-  return Math.max(
-    120000,
-    DEFAULT_GIT_FETCH_TIMEOUT_MS +
-      DEFAULT_GIT_TIMEOUT_MS * 3 +
-      UPDATE_PATH_CHECKOUT_BUDGET_MS * Math.max(0, updatePathCount) +
-      NPM_INSTALL_TIMEOUT_MS +
-      PLAYWRIGHT_INSTALL_TIMEOUT_MS +
-      DASHBOARD_REBUILD_TIMEOUT_MS +
-      REEXEC_BUFFER_TIMEOUT_MS,
-  );
-}
-
 function describeGitCommand(args) {
   return `git ${args.join(' ')}`;
 }
@@ -437,7 +424,10 @@ function gitTimeoutEnvVar(args) {
 function gitIn(root, ...args) {
   const timeout = gitTimeoutMs(args);
   try {
-    return execFileSync('git', args, { cwd: root, encoding: 'utf-8', timeout }).trim();
+    // execFileSync inherits stderr to the parent by default (unlike the async
+    // child_process variants) — pipe it instead so expected failures (e.g.
+    // `merge-base --is-ancestor` probes below) don't spam the terminal.
+    return execFileSync('git', args, { cwd: root, encoding: 'utf-8', timeout, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   } catch (err) {
     if (isTimeoutLikeError(err)) {
       throw new Error(`${describeGitCommand(args)} timed out after ${timeoutSeconds(timeout)}s. If your network is slow, retry or set ${gitTimeoutEnvVar(args)} to a larger value.`);
@@ -468,78 +458,39 @@ export function extractArrayFromSource(source, name) {
   return Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (entry) => entry[1]);
 }
 
-function mergePathLists(...lists) {
-  const merged = [];
-  const seen = new Set();
-  for (const list of lists) {
-    for (const path of list) {
-      if (seen.has(path)) continue;
-      seen.add(path);
-      merged.push(path);
-    }
-  }
-  return merged;
+// ── UPDATE-EXCLUDE ─────────────────────────────────────────────
+//
+// .update-exclude lists paths this fork has deliberately removed from the
+// upstream system layer and never wants a merge to restore (e.g. the
+// non-English modes/{lang}/ directories). It is NOT in SYSTEM_PATHS, so it
+// (and this parsing/matching logic) can't be touched by the merge itself.
+// Format: one path per line, trailing slash = directory prefix, no trailing
+// slash = exact file. Blank lines and lines starting with # are ignored.
+
+const UPDATE_EXCLUDE_FILE = '.update-exclude';
+
+export function parseUpdateExclude(raw) {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
 }
 
-// Files the self-reexec stage must check out so the TARGET update-system.mjs
-// loads without a missing-module crash. Today this is the entry plus its only
-// local import; resolveReexecCheckout derives the real set from the fetched
-// source, so this is only a defensive fallback if parsing ever misses one.
-const REEXEC_FALLBACK_FILES = ['update-system.mjs', 'scaffolder/bin/skill-entrypoints.mjs'];
-
-// Extracts static relative import/export specifiers ('./x.mjs', '../y.mjs')
-// from ESM source. Bare ('node:fs') and package ('js-yaml') specifiers are
-// ignored — only on-disk relative modules need to exist before re-exec.
-export function relativeImportSpecifiers(source) {
-  const specs = new Set();
-  const fromRe = /\b(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/g;
-  const bareRe = /\bimport\s*['"]([^'"]+)['"]/g;
-  let match;
-  while ((match = fromRe.exec(source))) specs.add(match[1]);
-  while ((match = bareRe.exec(source))) specs.add(match[1]);
-  return [...specs].filter((spec) => spec.startsWith('.'));
+export function pathMatchesExclude(path, entries) {
+  return entries.some((entry) => {
+    if (entry.endsWith('/')) return path === entry.slice(0, -1) || path.startsWith(entry);
+    return path === entry;
+  });
 }
 
-// Resolves the relative-import closure of `entry` within a git ref and returns
-// the repo-relative paths (forward-slash, Windows-safe) the re-exec stage must
-// check out. Only files actually present in the ref are returned; the known
-// fallback files are appended defensively. This generalizes the previously
-// hardcoded checkout list so a future new top-level import can't reintroduce
-// the self-reexec ERR_MODULE_NOT_FOUND crash (issue #1245).
-function resolveReexecCheckout(ref, entry) {
-  const visited = new Set();
-  const present = new Set();
-  const order = [];
-  const stack = [entry];
-  while (stack.length) {
-    const file = stack.pop();
-    if (visited.has(file)) continue;
-    visited.add(file);
-    let source;
-    try {
-      source = git('show', `${ref}:${file}`);
-    } catch {
-      continue; // absent in this ref — leave it to the normal update stage
-    }
-    present.add(file);
-    order.push(file);
-    const dir = pathPosix.dirname(file);
-    for (const spec of relativeImportSpecifiers(source)) {
-      stack.push(pathPosix.join(dir, spec));
-    }
-  }
-  for (const file of REEXEC_FALLBACK_FILES) {
-    if (present.has(file)) continue;
-    try {
-      git('show', `${ref}:${file}`);
-      order.push(file);
-      present.add(file);
-    } catch {
-      // Not in the target tree (older version) — nothing to check out.
-    }
-  }
-  return order;
+function loadUpdateExcludeEntries(root = ROOT) {
+  const excludePath = join(root, UPDATE_EXCLUDE_FILE);
+  if (!existsSync(excludePath)) return [];
+  return parseUpdateExclude(readFileSync(excludePath, 'utf-8'));
 }
+
+// Codes `git status --porcelain` uses for unmerged (conflicted) paths.
+const CONFLICT_STATUS_CODES = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
 
 function repoPath(root, path) {
   return join(root, ...path.split('/'));
@@ -558,62 +509,6 @@ export function prepareMaterializedSkillEntrypointsForStage(paths, root = ROOT) 
     prepared.push(path);
   }
   return prepared;
-}
-
-function revertPaths(paths) {
-  if (paths.length === 0) return;
-  // Must restore from HEAD, not from the index (#915 bug 1). After
-  // `git checkout FETCH_HEAD -- <path>` the index already holds the new
-  // content, so `git checkout -- <path>` (index→worktree) is a no-op.
-  // `git checkout HEAD -- <path>` resets both the index and the worktree
-  // to the pre-update commit, which is the correct rollback target.
-  for (const p of paths) {
-    try {
-      git('checkout', 'HEAD', '--', p);
-    } catch (err) {
-      const pathspec = p.endsWith('/') ? p.slice(0, -1) : p;
-      // Only remove if the path genuinely doesn't exist in HEAD.
-      // Other errors (permissions, corrupt refs) should re-throw.
-      let existsInHead = true;
-      try { git('cat-file', '-e', `HEAD:${pathspec}`); } catch { existsInHead = false; }
-      if (existsInHead) throw err;
-      // Path was newly introduced by the update — remove it so the
-      // working tree is consistent with HEAD.
-      try { git('rm', '-r', '-f', '--ignore-unmatch', '--', pathspec); } catch { /* ignore */ }
-      try { rmSync(join(ROOT, pathspec), { recursive: true, force: true }); } catch { /* already gone */ }
-    }
-  }
-}
-
-function addPaths(paths) {
-  if (paths.length === 0) return;
-  git('add', '--', ...paths);
-}
-
-function dashboardGoSourcesChanged() {
-  try {
-    const changed = git('diff', '--name-only', 'HEAD', '--', 'dashboard');
-    return changed
-      .split('\n')
-      .some(path => path.startsWith('dashboard/') && path.endsWith('.go'));
-  } catch {
-    return false;
-  }
-}
-
-function rebuildDashboardBinaryIfNeeded() {
-  if (!dashboardGoSourcesChanged()) return;
-
-  try {
-    execFileSync('go', ['build', '-o', 'career-dashboard', '.'], {
-      cwd: join(ROOT, 'dashboard'),
-      timeout: DASHBOARD_REBUILD_TIMEOUT_MS,
-      stdio: 'pipe',
-    });
-    console.log('dashboard binary rebuilt');
-  } catch {
-    console.log('dashboard binary rebuild skipped -- run: cd dashboard && go build -o career-dashboard . manually');
-  }
 }
 
 // ── CHECK ───────────────────────────────────────────────────────
@@ -720,287 +615,261 @@ async function check() {
 
 // ── APPLY ───────────────────────────────────────────────────────
 
+// After a merge, diffing against `HEAD` is useless (merge already committed
+// HEAD to include the new state) — diff against the pre-merge backup branch
+// instead so "what did this update actually change" means something.
+function dashboardGoSourcesChanged(baseRef) {
+  try {
+    const changed = git('diff', '--name-only', baseRef, 'HEAD', '--', 'dashboard');
+    return changed
+      .split('\n')
+      .some(path => path.startsWith('dashboard/') && path.endsWith('.go'));
+  } catch {
+    return false;
+  }
+}
+
+function rebuildDashboardBinaryIfNeeded(baseRef) {
+  if (!dashboardGoSourcesChanged(baseRef)) return;
+
+  try {
+    execFileSync('go', ['build', '-o', 'career-dashboard', '.'], {
+      cwd: join(ROOT, 'dashboard'),
+      timeout: DASHBOARD_REBUILD_TIMEOUT_MS,
+      stdio: 'pipe',
+    });
+    console.log('dashboard binary rebuilt');
+  } catch {
+    console.log('dashboard binary rebuild skipped -- run: cd dashboard && go build -o career-dashboard . manually');
+  }
+}
+
+// Auto-resolves ONLY "deleted by us, modified by them" conflicts whose path
+// matches .update-exclude (i.e. paths this fork intentionally removed and
+// upstream keeps shipping — the 16 non-English modes/{lang}/ directories
+// today). Any other conflict — including a DU conflict on a path NOT in
+// .update-exclude — is left for manual resolution; this function never
+// guesses on the user's behalf.
+function autoResolveExcludedConflicts(excludeEntries) {
+  const resolved = [];
+  const remaining = [];
+  for (const entry of gitStatusEntries()) {
+    if (!CONFLICT_STATUS_CODES.has(entry.code)) continue;
+    if (entry.code === 'DU' && pathMatchesExclude(entry.path, excludeEntries)) {
+      git('rm', '-f', '--ignore-unmatch', '--', entry.path);
+      resolved.push(entry.path);
+    } else {
+      remaining.push(entry.path);
+    }
+  }
+  return { resolved, remaining };
+}
+
+// Unconditional sweep, run after every successful merge (conflicted or not):
+// catches upstream ADDING a brand-new file inside an excluded directory,
+// which git would auto-merge cleanly with no conflict at all (there's
+// nothing local to conflict with), silently reintroducing content under a
+// path this fork removed.
+function pruneExcludedPaths(excludeEntries) {
+  if (excludeEntries.length === 0) return [];
+  const pruned = [];
+  for (const entry of excludeEntries) {
+    const pathspec = entry.endsWith('/') ? entry.slice(0, -1) : entry;
+    const onDisk = existsSync(join(ROOT, pathspec));
+    let tracked = true;
+    try {
+      git('ls-files', '--error-unmatch', '--', pathspec);
+    } catch {
+      tracked = false;
+    }
+    if (!onDisk && !tracked) continue;
+    try {
+      git('rm', '-r', '-f', '--ignore-unmatch', '--', pathspec);
+    } catch (err) {
+      console.error(`Failed to prune excluded path ${pathspec}: ${err.message}`);
+      continue;
+    }
+    // `git rm --ignore-unmatch` silently no-ops on an untracked path — fall
+    // back to a direct removal so an untracked leftover doesn't get reported
+    // as pruned while still sitting on disk.
+    try {
+      rmSync(join(ROOT, pathspec), { recursive: true, force: true });
+    } catch {
+      // Already gone — fine.
+    }
+    pruned.push(pathspec);
+  }
+  return pruned;
+}
+
 async function apply() {
   const local = localVersion();
-  const initialStatusPaths = new Set(gitStatusEntries().map(entry => entry.path));
-  const isReexec = process.env.CAREER_OPS_UPDATE_REEXEC === '1';
 
-  // Check for lock
   const lockFile = join(ROOT, '.update-lock');
-  if (existsSync(lockFile) && !isReexec) {
+  if (existsSync(lockFile)) {
     console.error('Update already in progress (.update-lock exists). If stuck, delete it manually.');
     process.exit(1);
   }
-
-  // Create lock
-  if (!isReexec) {
-    writeFileSync(lockFile, new Date().toISOString());
-  }
+  writeFileSync(lockFile, new Date().toISOString());
 
   try {
-    // 1. Backup: create branch + stash uncommitted work (#915 bug 3).
-    // The branch only captures committed state; any uncommitted edits are
-    // invisible to `git branch` and can be lost if the update aborts.
-    // `git stash create` builds a stash object without touching the stash
-    // stack, giving a recoverable ref for WIP even if the update fails.
-    const backupBranch = process.env.CAREER_OPS_UPDATE_BACKUP_BRANCH || updateBackupBranchName(local);
-    if (!isReexec) {
-      try {
-        const wip = git('stash', 'create');
-        if (wip) {
-          git('update-ref', `refs/backup-pre-update-wip/${local}`, wip);
-          console.log(`WIP stash ref saved: refs/backup-pre-update-wip/${local} (recover with: git stash apply refs/backup-pre-update-wip/${local})`);
-        }
-      } catch {
-        // Non-fatal: stash creation can fail in bare repos or empty trees.
-      }
-      git('branch', backupBranch);
-      console.log(`Backup branch created: ${backupBranch}`);
+    // 1. Backup: branch (committed state).
+    const backupBranch = updateBackupBranchName(local);
+    git('branch', backupBranch);
+    console.log(`Backup branch created: ${backupBranch}`);
+
+    // 1b. Shelve uncommitted work, if any. Unlike the old checkout-based
+    // design, `git merge` refuses outright to even start when uncommitted
+    // changes overlap with files it would touch ("Your local changes...
+    // would be overwritten by merge") — a real `git stash push` (not the
+    // non-destructive `stash create`) is required to get a clean tree.
+    // Nothing is lost: the stash entry stays in the stash list until
+    // popped, so a failed pop later is recoverable, never silently gone.
+    let stashedWip = false;
+    if (gitStatusEntries().length > 0) {
+      git('stash', 'push', '-m', `pre-update-wip-${local}`);
+      stashedWip = true;
+      console.log('Uncommitted changes stashed before merging (restored after, or left in the stash list if that fails).');
     }
 
     // 2. Fetch from canonical repo
     console.log('Fetching latest from upstream...');
     git('fetch', CANONICAL_REPO, 'main');
 
-    if (!isReexec) {
-      const timeout = reexecTimeoutMs();
-      try {
-        // The re-exec runs the TARGET updater, so every local module it imports
-        // at load time must exist first. Resolve the fetched update-system.mjs's
-        // relative-import closure and check out exactly those files, so a future
-        // new top-level import can't reintroduce the self-reexec crash (#1245).
-        const reexecFiles = resolveReexecCheckout('FETCH_HEAD', 'update-system.mjs');
-        git('checkout', 'FETCH_HEAD', '--', ...reexecFiles);
-        execFileSync(process.execPath, ['update-system.mjs', 'apply'], {
-          cwd: ROOT,
-          stdio: 'inherit',
-          timeout,
-          env: {
-            ...process.env,
-            CAREER_OPS_UPDATE_REEXEC: '1',
-            CAREER_OPS_UPDATE_BACKUP_BRANCH: backupBranch,
-          },
-        });
-        return;
-      } catch (err) {
-        if (isTimeoutLikeError(err)) {
-          console.error(`Updater self-reexec timed out after ${timeoutSeconds(timeout)}s.`);
-          throw err;
-        }
-        console.error(`Updater self-reexec failed: ${err.message}`);
-        throw err;
-      }
-    }
-
-    // 3. Checkout system files only
-    console.log('Updating system files...');
-    const updated = [];
-    let remoteSystemPaths = [];
+    let alreadyUpToDate = false;
     try {
-      const remoteUpdaterSource = git('show', 'FETCH_HEAD:update-system.mjs');
-      remoteSystemPaths = extractArrayFromSource(remoteUpdaterSource, 'SYSTEM_PATHS');
+      git('merge-base', '--is-ancestor', 'FETCH_HEAD', 'HEAD');
+      alreadyUpToDate = true;
     } catch {
-      // Older targets may not have update-system.mjs. Fall back to the
-      // local manifest plus bootstrap paths below.
+      alreadyUpToDate = false;
     }
-
-    // 3a. Keep bootstrap paths as a fallback for very old targets, but the
-    // target updater's SYSTEM_PATHS is now the source of truth for new files.
-    const updatePaths = mergePathLists(SYSTEM_PATHS, remoteSystemPaths, BOOTSTRAP_PATHS);
-
-    for (const path of updatePaths) {
-      try {
-        git('checkout', 'FETCH_HEAD', '--', path);
-        updated.push(path);
-      } catch {
-        // File may not exist in remote (new additions), skip
+    if (alreadyUpToDate) {
+      console.log('Already up to date with upstream.');
+      if (stashedWip) {
+        git('stash', 'pop');
+        console.log('Restored your uncommitted changes.');
       }
+      git('branch', '-D', backupBranch);
+      return;
     }
 
-    // tests/ is auto-discovered and EXECUTED (tests/**/*.test.mjs), so stale
-    // files left behind by upstream renames would run twice or crash the
-    // suite. `git checkout` never deletes upstream-removed files (see the
-    // limitation note in rollback below) — prune tracked extras against
-    // FETCH_HEAD. Only git-tracked files are removed: a user's untracked
-    // local experiments in tests/ are never touched.
+    // 3. Merge. On a clean merge, git auto-commits; on conflicts it stops
+    // and leaves the working tree in the conflicted state for step 3a/3b.
+    console.log('Merging upstream/main...');
+    let conflicted = false;
     try {
-      let remoteTests = new Set();
-      try {
-        remoteTests = new Set(
-          git('ls-tree', '-r', '--name-only', 'FETCH_HEAD', '--', 'tests/')
-            .split('\n').filter(Boolean).map((p) => p.replace(/\\/g, '/'))
-        );
-      } catch {
-        // tests/ may not exist in older targets (ls-tree throws) — nothing to
-        // prune. This is the only expected-and-silent failure in this block.
-      }
-      // An empty set means FETCH_HEAD has no tests/ at all (older target, or
-      // ls-tree quietly returning nothing) — pruning against it would delete
-      // every local test file. Only prune when the remote actually ships tests/.
-      if (remoteTests.size > 0) {
-        const localTests = git('ls-files', '--', 'tests/').split('\n').filter(Boolean);
-        for (const f of localTests) {
-          if (!remoteTests.has(f.replace(/\\/g, '/'))) {
-            // Per-file isolation: one failed unlink (locked file, permissions)
-            // must not abort pruning the rest.
-            try {
-              unlinkSync(join(ROOT, f));
-              // Raw path only: `updated` entries are reused as git pathspecs by
-              // revertPaths() and the scoped commit below. Pushed only after a
-              // successful unlink so failed deletions never enter `updated`.
-              updated.push(f);
-              console.log(`Pruned stale test file: ${f}`);
-            } catch (err) {
-              console.error(`Failed to prune stale test file ${f}: ${err.message}`);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      // Unexpected failure (e.g. ls-files threw) — surface it instead of
-      // silently skipping the prune step.
-      console.error(`Stale-test prune step failed: ${err.message}`);
+      git('merge', 'FETCH_HEAD', '--no-edit');
+    } catch {
+      conflicted = true;
     }
 
-    // Lazy import: keep update-system.mjs self-loading (see the top-of-file
-    // note). scaffolder/ was just checked out by the update stage above, so the
-    // module resolves here even on a pre-#1245 old→new re-exec.
+    const excludeEntries = loadUpdateExcludeEntries();
+
+    if (conflicted) {
+      const { resolved, remaining } = autoResolveExcludedConflicts(excludeEntries);
+      if (resolved.length > 0) {
+        console.log(`Auto-resolved ${resolved.length} conflict(s) for excluded path(s):`);
+        for (const p of resolved) console.log(`  ${p}`);
+      }
+      if (remaining.length > 0) {
+        console.error(`\n${remaining.length} merge conflict(s) need manual resolution:`);
+        for (const p of remaining) console.error(`  ${p}`);
+        console.error(`\nThe merge is left in progress — resolve the file(s) above, then run:`);
+        console.error(`  git add <resolved files> && git commit --no-edit`);
+        console.error(`\nPre-merge state is saved on branch: ${backupBranch}`);
+        console.error(`To abandon the merge entirely: git merge --abort`);
+        if (stashedWip) console.error(`Your uncommitted changes are safely stashed — after resolving, run: git stash pop`);
+        throw new Error(`Update stopped: ${remaining.length} unresolved merge conflict(s).`);
+      }
+      // Every remaining conflict was auto-resolved — finish the merge commit.
+      git('commit', '--no-edit');
+    }
+
+    // 3b. Restore stashed uncommitted work now that the merge is finalized.
+    // Non-fatal: an update that itself succeeded shouldn't be reported as
+    // failed just because reapplying unrelated WIP hit a conflict — the
+    // stash entry stays in the stash list either way, never silently lost.
+    if (stashedWip) {
+      try {
+        git('stash', 'pop');
+        console.log('Restored your uncommitted changes on top of the update.');
+      } catch {
+        console.error('\nCould not automatically restore your uncommitted changes (they conflict with the update).');
+        console.error('Nothing was lost — run `git stash list` then `git stash pop` to resolve manually.');
+      }
+    }
+
+    // 4. Unconditional exclude sweep (see pruneExcludedPaths doc comment).
+    const pruned = pruneExcludedPaths(excludeEntries);
+    if (pruned.length > 0) {
+      git('commit', '-m', 'chore: prune update-excluded paths', '--', ...pruned);
+      console.log(`Pruned ${pruned.length} update-excluded path(s):`);
+      for (const p of pruned) console.log(`  ${p}`);
+    }
+
+    // 5. Safety spot-check: did the merge touch a real user-layer path? Most
+    // USER_PATHS entries are gitignored and so literally can't appear in a
+    // merge diff — this only fires for the few tracked exceptions, and is a
+    // warning (not an abort — the merge is already committed) since
+    // selectively un-merging one path is exactly the fragile per-path
+    // surgery this design replaced.
+    const allowedSystemUserOverlap = new Set([
+      'writing-samples/README.md',
+      'interview-prep/sessions/.gitkeep',
+      'interview-prep/sessions/README.md',
+    ]);
+    try {
+      const touched = git('diff', '--name-only', backupBranch, 'HEAD').split('\n').filter(Boolean);
+      const suspicious = touched.filter((f) =>
+        !allowedSystemUserOverlap.has(f) && USER_PATHS.some((userPath) => f.startsWith(userPath)));
+      if (suspicious.length > 0) {
+        console.error(`\nWARNING: merge touched path(s) documented as user-layer:`);
+        for (const f of suspicious) console.error(`  ${f}`);
+        console.error(`Review these before trusting them; roll back with: node update-system.mjs rollback`);
+      }
+    } catch {
+      // Non-fatal — this is a spot-check, not the primary safety mechanism
+      // (most user paths are gitignored and untouchable by merge regardless).
+    }
+
+    // 6. Materialize skill-entrypoint pointers for filesystems without
+    // symlink support (unrelated to the merge/checkout distinction — same
+    // as before).
     const { ensureSkillEntrypoints } = await import('./scaffolder/bin/skill-entrypoints.mjs');
     const materializedSkillEntrypoints = ensureSkillEntrypoints(ROOT);
     if (materializedSkillEntrypoints.length > 0) {
-      for (const path of materializedSkillEntrypoints) {
-        if (!updated.includes(path)) updated.push(path);
-      }
+      prepareMaterializedSkillEntrypointsForStage(materializedSkillEntrypoints);
+      git('add', '--', ...materializedSkillEntrypoints);
+      git('commit', '-m', 'chore: materialize skill entrypoints for symlink-incapable filesystem', '--', ...materializedSkillEntrypoints);
       console.log(`Materialized ${materializedSkillEntrypoints.length} skill entrypoint(s) for filesystems without symlink support`);
     }
 
-    // 4. Validate: check NO user files were touched.
-    //
-    // Track which user paths the update unexpectedly touched so we
-    // can exclude them from the revert and log what was preserved.
-    const violatedUserPaths = new Set();
-    try {
-      for (const entry of gitStatusEntries()) {
-        const file = entry.path;
-        if (initialStatusPaths.has(file)) continue;
-        // Explicit SYSTEM_PATHS entries override USER_PATHS prefix matches.
-        // (e.g. writing-samples/README.md is system-owned doc inside a user dir.)
-        if (updatePaths.includes(file)) continue;
-        for (const userPath of USER_PATHS) {
-          if (file.startsWith(userPath)) {
-            console.error(`SAFETY VIOLATION: User file was modified: ${file}`);
-            violatedUserPaths.add(file);
-          }
-        }
-      }
-    } catch (err) {
-      // Fail closed: if we can't validate the safety invariant we must
-      // not silently proceed — that would let a real violation slip
-      // through. Revert what we already applied and abort.
-      console.error(`Aborting: could not validate user-layer safety (${err.message}).`);
-      try {
-        revertPaths(updated);
-      } catch (revertErr) {
-        // If the revert itself fails (likely whatever broke `git
-        // status` also broke `git checkout --`), don't lose the
-        // original validation error — chain it via `cause`.
-        throw new Error(
-          `Validation failed (${err.message}) and revert also failed (${revertErr.message})`,
-          { cause: err },
-        );
-      }
-      throw err;
-    }
-
-    if (violatedUserPaths.size > 0) {
-      console.error('Aborting: user files were touched. Rolling back system files...');
-      // Revert ONLY the system-layer updates — never `git checkout` the
-      // violated user paths back to HEAD. Doing so would overwrite the
-      // user's working-tree content (accumulated STAR+R stories, local
-      // edits) with whatever is committed upstream, causing data loss.
-      // The user files were flagged as touched by the update, not by the
-      // user; leaving them as-is is the safe choice — the user decides
-      // what to do with them.
-      const violation = new Error('Update aborted: user files were touched.');
-      try {
-        revertPaths([...updated]);
-      } catch (revertErr) {
-        // If the revert itself fails, don't lose the safety-violation
-        // diagnostic — chain it via `cause` so the user sees both.
-        throw new Error(
-          `Safety violation (${violation.message}) and revert also failed (${revertErr.message})`,
-          { cause: violation },
-        );
-      }
-      console.error(`User file(s) left as-is (your content was NOT overwritten):`);
-      for (const f of violatedUserPaths) console.error(`  ${f}`);
-      // `throw` (not `process.exit`) so the outer `finally` runs and
-      // .update-lock is removed. Exiting here would leak the lock and
-      // permanently block subsequent updates until the user deletes
-      // it manually.
-      throw violation;
-    }
-
-    // 5. Install any new dependencies
+    // 7. Install any new dependencies
     try {
       execSync('npm install --silent', { cwd: ROOT, timeout: NPM_INSTALL_TIMEOUT_MS });
     } catch {
       console.log('npm install skipped (may need manual run)');
     }
 
-    // 5b. Ensure Playwright browser binary is up to date after npm install
+    // 7b. Ensure Playwright browser binary is up to date after npm install
     try {
       execSync('npx playwright install chromium', { cwd: ROOT, timeout: PLAYWRIGHT_INSTALL_TIMEOUT_MS, stdio: 'ignore' });
     } catch {
       console.log('playwright install skipped (run manually: npx playwright install chromium)');
     }
 
-    // 6. Rebuild compiled dashboard if Go sources changed
-    rebuildDashboardBinaryIfNeeded();
+    // 8. Rebuild compiled dashboard if Go sources changed
+    rebuildDashboardBinaryIfNeeded(backupBranch);
 
-    // 7. Commit the update
-    const remote = localVersion(); // Re-read after checkout updated VERSION
-    const pathsToStage = [...updated];
+    // 9. Clear the dismiss flag, if set, now that the update actually landed.
     const dismissFile = join(ROOT, '.update-dismissed');
-    if (existsSync(dismissFile)) {
-      unlinkSync(dismissFile);
-      pathsToStage.push('.update-dismissed');
-    }
+    if (existsSync(dismissFile)) unlinkSync(dismissFile);
 
-    try {
-      prepareMaterializedSkillEntrypointsForStage(materializedSkillEntrypoints);
-      addPaths(pathsToStage);
-      // Scope the commit to only the staged update paths (#915 bug 2).
-      // A bare `git commit` would sweep any unrelated pre-staged files into
-      // the update commit. Passing the explicit pathspec list constrains the
-      // commit to exactly the files this update touched.
-      git('commit', '-m', `chore: auto-update system files to v${remote}`, '--', ...pathsToStage);
-    } catch (e) {
-      let commitFailed = false;
-      try {
-        const entries = gitStatusEntries();
-        const changedPaths = new Set(entries.map(entry => entry.path));
-        const allTargetPaths = [...pathsToStage, ...materializedSkillEntrypoints];
-        commitFailed = allTargetPaths.some(p => changedPaths.has(p));
-      } catch (err) {
-        commitFailed = true;
-      }
-
-      if (commitFailed) {
-        const allTargetPaths = [...pathsToStage, ...materializedSkillEntrypoints];
-        const pathspec = allTargetPaths.map(p => `"${p}"`).join(' ');
-        throw new Error(
-          `Update commit failed (files may be staged but not committed).\n` +
-          `    Error: ${e.message.split('\n')[0]}\n` +
-          `    Please run manually to finish the update:\n` +
-          `    git commit -m "chore: auto-update system files to v${remote}" -- ${pathspec}`
-        );
-      }
-      // Otherwise, genuinely nothing to commit (already up to date)
-    }
+    const remote = localVersion(); // Re-read after merge updated VERSION
+    const changedCount = git('diff', '--name-only', backupBranch, 'HEAD').split('\n').filter(Boolean).length;
 
     console.log(`\nUpdate complete: v${local} → v${remote}`);
-    console.log(`Updated ${updated.length} system paths.`);
+    console.log(`${changedCount} path(s) changed.`);
     console.log(`Rollback available: node update-system.mjs rollback`);
 
     console.log('\n-- The CareerOps Manifesto ------------------------------');
@@ -1009,16 +878,19 @@ async function apply() {
     console.log('    npm run manifesto  ·  https://career-ops.org/manifesto?utm_source=updater');
 
   } finally {
-    // Remove lock
-    if (!isReexec && existsSync(lockFile)) unlinkSync(lockFile);
+    if (existsSync(lockFile)) unlinkSync(lockFile);
   }
 }
 
 // ── ROLLBACK ────────────────────────────────────────────────────
 
 function rollback() {
-  // Find most recent backup branch
   try {
+    // A merge-based apply() only ever changes tracked files as a single
+    // commit (or a couple of scoped follow-up commits for the exclude-prune
+    // and skill-entrypoint steps) on top of the backup branch. Resetting to
+    // that branch undoes all of it in one step — no per-path restore/remove
+    // dance needed, unlike the old checkout-based design.
     const branches = git('for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads/backup-pre-update-*');
     const latest = newestBackupBranch(branches);
 
@@ -1027,75 +899,21 @@ function rollback() {
       process.exit(1);
     }
 
+    // Refuse on a dirty working tree — `git reset --hard` would silently
+    // discard uncommitted work unrelated to the update. Ask the user to
+    // stash or commit first rather than guessing.
+    const dirty = gitStatusEntries();
+    if (dirty.length > 0) {
+      console.error('Working tree has uncommitted changes — refusing to rollback.');
+      console.error('Commit or stash your changes first, then re-run rollback.');
+      for (const entry of dirty) console.error(`  ${entry.code} ${entry.path}`);
+      process.exit(1);
+    }
+
     console.log(`Rolling back to: ${latest}`);
-
-    // Checkout system files from backup branch.
-    //
-    // Two failure modes for `git checkout` here:
-    //   (a) the path didn't exist in the backup branch — the apply()
-    //       that produced this backup was on an older version that
-    //       didn't track this path yet. Rollback must DELETE the path
-    //       so the working tree mirrors the backup state.
-    //   (b) anything else — propagate so we don't silently leave the
-    //       working tree in a partially-restored state.
-    //
-    // Limitation: `git checkout <ref> -- <dir>` restores blobs from
-    // the backup tree but doesn't remove files that were added INSIDE
-    // an already-tracked directory between backup and rollback. Rolling
-    // back per-file via `git diff --name-status <backup>` would catch
-    // that but is a larger change; tracked separately if it ever bites.
-    const restored = [];
-    const removed = [];
-    for (const path of SYSTEM_PATHS) {
-      try {
-        git('checkout', latest, '--', path);
-        restored.push(path);
-      } catch (err) {
-        const pathspec = path.endsWith('/') ? path.slice(0, -1) : path;
-        let existedInBackup = true;
-        try {
-          git('cat-file', '-e', `${latest}:${pathspec}`);
-        } catch {
-          existedInBackup = false;
-        }
-        if (existedInBackup) {
-          throw err;
-        }
-        // Path was introduced by a later apply() — remove it so the
-        // tree truly matches the backup. `git rm` stages the deletion
-        // for tracked files; `rmSync` cleans up the untracked-but-
-        // on-disk case (e.g. an apply() that crashed between checkout
-        // and commit, leaving the path untracked locally).
-        git('rm', '-r', '-f', '--ignore-unmatch', '--', pathspec);
-        try {
-          rmSync(join(ROOT, pathspec), { recursive: true, force: true });
-        } catch {
-          // Already gone, or not present on disk — fine.
-        }
-        removed.push(pathspec);
-      }
-    }
-
-    if (restored.length > 0) addPaths(restored);
-    const rollbackPaths = [...restored, ...removed];
-    try {
-      // Scope the commit to the rollback paths (#915 bug 2). A bare
-      // `git commit` would sweep unrelated staged files into the rollback.
-      if (rollbackPaths.length > 0) {
-        git('commit', '-m', `chore: rollback system files from ${latest}`, '--', ...rollbackPaths);
-      }
-    } catch {
-      // Tolerate any commit failure here — the common case is the
-      // "nothing to commit" no-op when the working tree already
-      // matched the backup (e.g. user ran rollback twice). This
-      // mirrors apply()'s broad-catch in the commit step; narrowing
-      // to a specific git-error string is fragile and would diverge
-      // from that pattern. Genuine setup problems (hooks, signing,
-      // disk full) will resurface on the next normal git operation.
-    }
-
-    console.log(`Rollback complete. Restored ${restored.length} path(s) from ${latest}, removed ${removed.length} path(s) added after the backup.`);
-    console.log('Your data (CV, profile, tracker, reports) was not affected.');
+    git('reset', '--hard', latest);
+    console.log('Rollback complete.');
+    console.log('Your data (CV, profile, tracker, reports) was not affected — those files are gitignored and untouched by merge.');
   } catch (err) {
     console.error('Rollback failed:', err.message);
     process.exit(1);

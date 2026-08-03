@@ -40,6 +40,7 @@ These files contain your personal data, customizations, and work product. Update
 | `reports/*` | Your evaluation reports |
 | `output/*` | Your generated PDFs |
 | `jds/*` | Your saved job descriptions |
+| `.update-exclude` | Paths this fork has deliberately removed from the upstream system layer and never wants `update-system.mjs apply` to restore (e.g. the removed non-English `modes/{lang}/` directories). Read natively by `apply()` itself — see `modes/_custom.md` |
 
 ## System Layer (safe to auto-update)
 

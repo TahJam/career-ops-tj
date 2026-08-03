@@ -3,8 +3,13 @@
 /**
  * updater-migration-tests.mjs — source-level safety checks for update-system.
  *
- * Protects cross-version migrations where an older installed updater must fetch
- * newly introduced system paths without touching user data.
+ * apply() pulls upstream changes via `git merge` against the canonical repo
+ * rather than checking out a fixed path list (see
+ * plans/07-31-26_replace-update-mechanism-with-merge.md) — this guards the
+ * invariants that design depends on: no leftover self-reexec machinery,
+ * conflict-vs-clean-merge handling, .update-exclude auto-resolution, and
+ * that SYSTEM_PATHS/USER_PATHS (still used elsewhere as a documentation and
+ * coverage manifest) stay internally consistent.
  */
 
 import { readFileSync } from 'fs';
@@ -103,81 +108,74 @@ for (const path of requiredBootstrapPaths) {
   else fail(`BOOTSTRAP_PATHS missing ${path}`);
 }
 
-const twoPassManifestChecks = [
+const mergeBasedApplyChecks = [
   {
-    name: 'apply has a re-exec guard',
+    name: 'no leftover self-reexec guard (retired — merge needs no path manifest to bootstrap)',
     pattern: /CAREER_OPS_UPDATE_REEXEC/,
+    expectAbsent: true,
   },
   {
-    name: 'apply resolves the re-exec checkout closure from FETCH_HEAD (#1245)',
-    pattern: /resolveReexecCheckout\('FETCH_HEAD',\s*'update-system\.mjs'\)/,
+    name: 'no leftover resolveReexecCheckout (retired)',
+    pattern: /resolveReexecCheckout/,
+    expectAbsent: true,
   },
   {
-    name: 'apply checks out the resolved re-exec files from FETCH_HEAD (#1245)',
-    pattern: /git\('checkout',\s*'FETCH_HEAD',\s*'--',\s*\.\.\.reexecFiles\)/,
+    name: 'no leftover relativeImportSpecifiers (retired)',
+    pattern: /relativeImportSpecifiers/,
+    expectAbsent: true,
   },
   {
-    name: 're-exec fallback still covers the skill-entrypoints import (#1245)',
-    pattern: /REEXEC_FALLBACK_FILES\s*=\s*\[[^\]]*'scaffolder\/bin\/skill-entrypoints\.mjs'/,
+    name: 'no leftover mergePathLists / path-manifest checkout (retired)',
+    pattern: /mergePathLists/,
+    expectAbsent: true,
   },
   {
-    name: 'apply re-execs through the current Node binary',
-    pattern: /execFileSync\(process\.execPath,\s*\[\s*'update-system\.mjs',\s*'apply'\s*\]/,
+    name: 'apply fetches from the canonical repo',
+    pattern: /git\('fetch',\s*CANONICAL_REPO,\s*'main'\)/,
   },
   {
-    name: 'apply carries the original backup branch across re-exec',
-    pattern: /CAREER_OPS_UPDATE_BACKUP_BRANCH/,
+    name: 'apply checks whether FETCH_HEAD is already an ancestor of HEAD before merging',
+    pattern: /git\('merge-base',\s*'--is-ancestor',\s*'FETCH_HEAD',\s*'HEAD'\)/,
   },
   {
-    name: 'apply reads the target updater manifest from FETCH_HEAD',
-    pattern: /git\('show',\s*'FETCH_HEAD:update-system\.mjs'\)/,
+    name: 'apply merges FETCH_HEAD instead of checking out a path list',
+    pattern: /git\('merge',\s*'FETCH_HEAD',\s*'--no-edit'\)/,
   },
   {
-    name: 'apply extracts SYSTEM_PATHS from the target updater',
-    pattern: /extractArrayFromSource\([^,]+,\s*'SYSTEM_PATHS'\)/,
+    name: 'apply auto-resolves only DU (deleted-by-us) conflicts matching .update-exclude',
+    pattern: /entry\.code === 'DU' && pathMatchesExclude\(entry\.path, excludeEntries\)/,
   },
   {
-    name: 'apply merges local and target system manifests',
-    pattern: /mergePathLists\(SYSTEM_PATHS,\s*remoteSystemPaths[\s\S]*?\)/,
+    name: 'apply refuses to guess on any conflict not in .update-exclude — throws instead of committing',
+    pattern: /throw new Error\(`Update stopped: \$\{remaining\.length\} unresolved merge conflict/,
   },
   {
-    name: 'apply checks out the merged manifest instead of only the local manifest',
-    pattern: /for\s*\(const path of updatePaths\)/,
+    name: 'apply sweeps .update-exclude paths unconditionally after merging (catches upstream adding new files under an excluded dir)',
+    pattern: /function pruneExcludedPaths\(/,
   },
   {
-    name: 'revertPaths uses git checkout HEAD (not just --) to reset index+worktree (#915)',
-    pattern: /git\('checkout',\s*'HEAD',\s*'--'/,
+    name: 'apply stashes uncommitted work before merging (git merge refuses on a dirty tree, unlike the old checkout)',
+    pattern: /git\('stash',\s*'push',\s*'-m'/,
   },
   {
-    name: 'apply commit is scoped to update paths, not bare commit (#915)',
-    pattern: /git\('commit',\s*'-m',[^)]+'--',\s*\.\.\.pathsToStage\)/,
+    name: 'apply restores stashed work after the merge finalizes, without failing the whole update if the pop conflicts',
+    pattern: /git\('stash',\s*'pop'\)/,
   },
   {
-    name: 'rollback commit is scoped to rollback paths, not bare commit (#915)',
-    pattern: /git\('commit',\s*'-m',[^)]+'--',\s*\.\.\.rollbackPaths\)/,
+    name: 'rollback resets to the backup branch in one step instead of per-path restore/remove',
+    pattern: /git\('reset',\s*'--hard',\s*latest\)/,
   },
   {
-    name: 'apply captures uncommitted work via git stash create before branching (#915)',
-    pattern: /git\('stash',\s*'create'\)/,
+    name: 'rollback refuses on a dirty working tree rather than silently discarding uncommitted work',
+    pattern: /Working tree has uncommitted changes — refusing to rollback/,
   },
 ];
 
-for (const check of twoPassManifestChecks) {
-  if (check.pattern.test(source)) pass(check.name);
+for (const check of mergeBasedApplyChecks) {
+  const matched = check.pattern.test(source);
+  const ok = check.expectAbsent ? !matched : matched;
+  if (ok) pass(check.name);
   else fail(check.name);
-}
-
-// #1706: update-system.mjs must be self-loading — no static (top-level) relative
-// imports. A pre-#1245 client's apply() self-reexec checks out ONLY
-// update-system.mjs before re-execing it, so any top-level `import ... from
-// './...'` (or bare `import './...'`) crashes that re-exec with
-// ERR_MODULE_NOT_FOUND on the old→new jump. Relative modules must be lazily
-// `await import()`ed at their point of use instead.
-const staticRelativeImport = /^\s*(?:import|export)\b[^\n]*?\bfrom\s*['"]\.[^'"]*['"]|^\s*import\s*['"]\.[^'"]*['"]/m;
-if (staticRelativeImport.test(source)) {
-  fail('update-system.mjs is self-loading — no static relative imports (#1706)');
-} else {
-  pass('update-system.mjs is self-loading — no static relative imports (#1706)');
 }
 
 for (const userPath of ['cv.md', 'config/profile.yml', 'modes/_profile.md', 'portals.yml', 'data/', 'reports/']) {

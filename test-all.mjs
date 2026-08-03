@@ -1092,7 +1092,7 @@ console.log('\n7c. Updater dashboard rebuild');
 
 const updateSystemScript = readFile('update-system.mjs');
 if (
-  /git\('diff',\s*'--name-only',\s*'HEAD',\s*'--',\s*'dashboard'\)/.test(updateSystemScript) &&
+  /git\('diff',\s*'--name-only',\s*baseRef,\s*'HEAD',\s*'--',\s*'dashboard'\)/.test(updateSystemScript) &&
   /path\.startsWith\(['"]dashboard\/['"]\)\s*&&\s*path\.endsWith\(['"]\.go['"]\)/.test(updateSystemScript) &&
   /go build -o career-dashboard \./.test(updateSystemScript) &&
   /cwd:\s*join\(ROOT,\s*['"]dashboard['"]\)/.test(updateSystemScript) &&
@@ -1110,27 +1110,7 @@ if (updateSystemScript.includes("'CODEX.md'")) {
 }
 
 try {
-  const {
-    DASHBOARD_REBUILD_TIMEOUT_MS,
-    NPM_INSTALL_TIMEOUT_MS,
-    PLAYWRIGHT_INSTALL_TIMEOUT_MS,
-    REEXEC_BUFFER_TIMEOUT_MS,
-    UPDATE_PATH_CHECKOUT_BUDGET_MS,
-    gitTimeoutMs,
-    parsePositiveInt,
-    reexecTimeoutMs,
-  } = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
-  const fetchTimeout = gitTimeoutMs(['fetch']);
-  const gitCommandTimeout = gitTimeoutMs(['checkout']);
-  const updatePathCount = 100;
-  const minimumReexecBudget =
-    fetchTimeout +
-    gitCommandTimeout * 3 +
-    updatePathCount * UPDATE_PATH_CHECKOUT_BUDGET_MS +
-    NPM_INSTALL_TIMEOUT_MS +
-    PLAYWRIGHT_INSTALL_TIMEOUT_MS +
-    DASHBOARD_REBUILD_TIMEOUT_MS +
-    REEXEC_BUFFER_TIMEOUT_MS;
+  const { gitTimeoutMs, parsePositiveInt } = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
 
   if (parsePositiveInt('42', 7) === 42 && parsePositiveInt('-1', 7) === 7 && parsePositiveInt('nope', 7) === 7) {
     pass('update-system timeout parser accepts only positive integer overrides');
@@ -1142,12 +1122,6 @@ try {
     pass('update-system gives fetch a larger timeout than ordinary git commands');
   } else {
     fail('update-system fetch timeout is not larger than ordinary git command timeout');
-  }
-
-  if (reexecTimeoutMs(updatePathCount) >= minimumReexecBudget) {
-    pass('update-system sizes self-reexec timeout for downstream fetch/git/install/rebuild work');
-  } else {
-    fail('update-system self-reexec timeout budget is too small for downstream apply work');
   }
 } catch (e) {
   fail(`update-system timeout helper test crashed: ${e.message}`);
@@ -1744,6 +1718,47 @@ if (
   pass('offer-prep registered in data contract, gitignore, and updater manifest');
 } else {
   fail('offer-prep missing from data contract / gitignore / SYSTEM_PATHS');
+}
+
+// update-system.mjs now pulls upstream via `git merge` rather than a fixed
+// path checkout (plans/07-31-26_replace-update-mechanism-with-merge.md) —
+// .update-exclude + the exclude-matching helpers are read natively, so no
+// separate never-in-SYSTEM_PATHS script is needed anymore. Guard the core
+// invariants of that design instead.
+if (
+  dataContractDoc.includes('.update-exclude') &&
+  updaterSrc.includes("git('merge', 'FETCH_HEAD'") &&
+  updaterSrc.includes('pathMatchesExclude') &&
+  updaterSrc.includes('pruneExcludedPaths') &&
+  !updaterSrc.includes('CAREER_OPS_UPDATE_REEXEC')
+) {
+  pass('update-system.mjs merges from upstream and prunes .update-exclude paths natively (no self-reexec)');
+} else {
+  fail('update-system.mjs merge-based apply invariant broken — check DATA_CONTRACT.md and update-system.mjs');
+}
+
+try {
+  const { parseUpdateExclude, pathMatchesExclude } = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
+  const entries = parseUpdateExclude('# comment\n\nmodes/de/\n  \nmodes/fr/\n');
+  if (JSON.stringify(entries) === JSON.stringify(['modes/de/', 'modes/fr/'])) {
+    pass('parseUpdateExclude skips comments/blank lines and trims whitespace');
+  } else {
+    fail(`parseUpdateExclude mismatch: ${JSON.stringify(entries)}`);
+  }
+
+  if (
+    pathMatchesExclude('modes/de/interview.md', ['modes/de/']) === true &&
+    pathMatchesExclude('modes/de', ['modes/de/']) === true &&
+    pathMatchesExclude('modes/deep.md', ['modes/de/']) === false &&
+    pathMatchesExclude('.qwen/skills/career-ops/SKILL.md', ['.qwen/skills/career-ops/SKILL.md']) === true &&
+    pathMatchesExclude('modes/oferta.md', ['modes/de/', '.qwen/']) === false
+  ) {
+    pass('pathMatchesExclude matches directory prefixes and exact files without false-positiving on a shared prefix');
+  } else {
+    fail('pathMatchesExclude matching logic is broken');
+  }
+} catch (e) {
+  fail(`update-exclude helper test crashed: ${e.message}`);
 }
 
 if (
@@ -3247,71 +3262,21 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
   }
 }
 
+// #1245/#1706's self-reexec checkout (and its relativeImportSpecifiers /
+// resolveReexecCheckout helpers) no longer exist — apply() merges the whole
+// tree via git instead of checking out a fixed path list, so there is no
+// old→new re-exec crash for these tests to guard against. See
+// plans/07-31-26_replace-update-mechanism-with-merge.md.
 {
-  // Regression guard for #1245: the self-reexec checkout derives its file list
-  // from update-system.mjs's static relative imports, so the parser must catch
-  // every relative import/export form and ignore bare/package specifiers.
-  try {
-    const updater = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
-    const sample = [
-      "import { a } from './scaffolder/bin/skill-entrypoints.mjs';",
-      'import b from "../lib/helper.mjs";',
-      "export { c } from './sibling.mjs';",
-      "import './side-effect.mjs';",
-      "import { readFileSync } from 'node:fs';",
-      "import yaml from 'js-yaml';",
-    ].join('\n');
-    const specs = updater.relativeImportSpecifiers(sample).sort();
-    const expected = [
-      '../lib/helper.mjs',
-      './scaffolder/bin/skill-entrypoints.mjs',
-      './sibling.mjs',
-      './side-effect.mjs',
-    ];
-    if (JSON.stringify(specs) === JSON.stringify(expected)) {
-      pass('relativeImportSpecifiers extracts relative imports, ignores bare/package (#1245)');
-    } else {
-      fail(`relativeImportSpecifiers mismatch: got ${JSON.stringify(specs)}`);
-    }
-
-    // #1706: update-system.mjs must be SELF-LOADING — no static (top-level)
-    // relative imports. A pre-#1245 client's apply() self-reexec checks out
-    // ONLY update-system.mjs before re-execing it, so a static top-level
-    // relative import crashes that re-exec with ERR_MODULE_NOT_FOUND on the
-    // old→new jump. Relative modules must be pulled in lazily instead. Matched
-    // line-anchored (not via relativeImportSpecifiers, whose loose regex also
-    // matches such specifiers inside prose/comments) so only real top-level
-    // import/export statements count.
-    const liveSource = readFileSync(join(ROOT, 'update-system.mjs'), 'utf-8');
-    const staticRelativeImport = /^\s*(?:import|export)\b[^\n]*?\bfrom\s*['"]\.[^'"]*['"]|^\s*import\s*['"]\.[^'"]*['"]/m;
-    if (!staticRelativeImport.test(liveSource)) {
-      pass('update-system.mjs has no static relative imports — self-loading (#1706)');
-    } else {
-      fail('update-system.mjs has a static relative import that breaks old→new re-exec (#1706)');
-    }
-  } catch (e) {
-    fail(`relativeImportSpecifiers test crashed: ${e.message}`);
-  }
-}
-
-{
-  // #1706 end-to-end regression: reproduce the old→new re-exec by checking out
-  // ONLY update-system.mjs into an otherwise-empty dir (no scaffolder/) and
-  // importing it. Before the lazy-import fix this threw ERR_MODULE_NOT_FOUND at
-  // module load; it must now load standalone.
-  const isolatedRoot = mkdtempSync(join(tmpdir(), 'career-ops-updater-standalone-'));
-  try {
-    const updaterSource = readFileSync(join(ROOT, 'update-system.mjs'), 'utf-8');
-    const isolatedUpdater = join(isolatedRoot, 'update-system.mjs');
-    writeFileSync(isolatedUpdater, updaterSource);
-    try {
-      await import(pathToFileURL(isolatedUpdater).href);
-      pass('update-system.mjs imports standalone without scaffolder/ present (#1706)');
-    } catch (err) {
-      fail(`update-system.mjs failed to import standalone (old→new re-exec crash, #1706): ${err.code || err.message}`);
-    }
-  } finally {
-    rmSync(isolatedRoot, { recursive: true, force: true });
+  const liveSource = readFileSync(join(ROOT, 'update-system.mjs'), 'utf-8');
+  if (
+    !liveSource.includes('CAREER_OPS_UPDATE_REEXEC') &&
+    !liveSource.includes('resolveReexecCheckout') &&
+    !liveSource.includes('relativeImportSpecifiers')
+  ) {
+    pass('update-system.mjs has no leftover self-reexec machinery (retired by the merge-based apply)');
+  } else {
+    fail('update-system.mjs still references retired self-reexec machinery');
   }
 }
 

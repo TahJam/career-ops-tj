@@ -72,7 +72,7 @@ node update-system.mjs check
 Parse the JSON output:
 - `{"status": "update-available", "local": "1.0.0", "remote": "1.1.0", "changelog": "..."}` → tell the user:
   > "career-ops update available (v{local} → v{remote}). Your data (CV, profile, tracker, reports) will NOT be touched. Want me to update?"
-  If yes → run `node update-system.mjs apply`. If no → run `node update-system.mjs dismiss`.
+  If yes → run `node update-system.mjs apply` (merges upstream via git; auto-resolves `.update-exclude` conflicts, stops and reports anything else for manual resolution — see `modes/_custom.md`). If no → run `node update-system.mjs dismiss`.
 - `{"status": "up-to-date"}` → say nothing
 - `{"status": "dismissed"}` → say nothing
 - `{"status": "offline"}` → say nothing
