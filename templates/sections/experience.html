@@ -8,15 +8,17 @@
     BULLETS          — rendered <li> tags
     LOCATION_BLOCK   — conditional: .job-location div when location present; omitted when absent
 
+  Role and company render on one combined bold line ("Role — Company") rather
+  than two stacked lines — matches the minimal single-accent CV style (#2201).
+
   Template packs: edit tag names, class names, and field order freely inside the ENTRY zone.
 -->
 <!--ENTRY-->
 <div class="job">
   <div class="job-header">
-    <span class="job-company">{{COMPANY}}</span>
+    <span class="job-title">{{ROLE}} — {{COMPANY}}</span>
     <span class="job-period">{{PERIOD}}</span>
   </div>
-  <div class="job-role">{{ROLE}}</div>
   {{LOCATION_BLOCK}}
   <ul>
     {{BULLETS}}

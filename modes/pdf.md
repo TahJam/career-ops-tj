@@ -13,7 +13,7 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 3. Extract 15-20 keywords from the JD
 4. Run the zero-LLM skill-gap check before drafting anything: write the JD to a scratch file (e.g. `jds/{slug}.md`) if it isn't already one, then `node jd-skill-gap.mjs jds/{slug}.md --summary`. This classifies the JD's explicit requirements against `cv.md` into three buckets — never surface `result.gap` items as if the candidate has them:
    - `existing` — already a named skill in cv.md's Skills section, safe to lead with
-   - `supportedByResume` — not a named skill yet, but cv.md's prose already demonstrates it; legitimate candidates for the Skills section in the user's own words (Step 13's competency grid draws from here first)
+   - `supportedByResume` — not a named skill yet, but cv.md's prose already demonstrates it; legitimate candidates for the Skills section in the user's own words (Step 13's JD-keyword Skills additions draw from here first)
    - `gap` — cv.md has no trace of it at all. **Tell the user explicitly which skills are gaps before generating the CV.** Never paper over a gap by inventing a claim, and never silently drop it from the conversation — the user decides whether to proceed, address it in the cover letter/interview, or skip the role
 
    If the output prints a `🚨 LOW CONFIDENCE` block, zero skills were classified, so the three empty buckets mean "nothing was classified", not "no gaps found". **Never treat this as a pass, whichever reason is given.** Read the JD yourself to identify the required skills before drafting, and tell the user the automated check produced no result. The reason code says which of the three shapes it is:
@@ -32,7 +32,7 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 10. Rewrite Professional Summary by injecting JD keywords + exit narrative bridge ("Built and sold a business. Now applying systems thinking to [JD domain].")
 11. Select top 3-4 most relevant projects for the job
 12. Reorder experience bullets by JD relevance and by the risk map: strongest matching evidence first
-13. Build competency grid from JD requirements (6-8 keyword phrases), prioritizing `existing` and `supportedByResume` skills from Step 4 — never a `gap` skill
+13. Fold 6-8 JD-relevant keyword phrases into the `skills` array as an additional category (e.g. `{"category": "Focus Areas", "items": [...]}`), prioritizing `existing` and `supportedByResume` skills from Step 4 — never a `gap` skill. (Core Competencies was merged into Skills, #2201 — there is no separate competency-grid section in the base template.)
 14. Inject keywords naturally into existing achievements (NEVER invent)
 15. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: top third must make target role, strongest fit, and proof obvious
 16. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
@@ -67,24 +67,26 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 
 ## PDF Design
 
-- **Fonts**: Space Grotesk (headings, 600-700) + DM Sans (body, 400-500)
-- **Fonts self-hosted**: `fonts/`
-- **Header**: name in Space Grotesk 24px bold + gradient line `linear-gradient(to right, hsl(187,74%,32%), hsl(270,70%,45%))` 2px + contact row
-- **Section headers**: Space Grotesk 13px, uppercase, letter-spacing 0.05em, color cyan primary
-- **Body**: DM Sans 11px, line-height 1.5
-- **Company names**: accent purple color `hsl(270,70%,45%)`
+Minimal single-accent style (#2201), modeled on the candidate's own prior resume:
+
+- **Fonts**: system sans stack (Liberation Sans / Helvetica Neue / Arial) — clean ATS extraction, no ligature artifacts
+- **Header**: name centered, 28px bold, optional role-title line beneath it (`candidate.title`, e.g. "Software Engineer | Machine Learning | Data Scientist" — omit for no line), a solid 1.5px accent rule, then a centered contact row
+- **Accent**: one navy tone (`hsl(212, 60%, 38%)`, the `--accent-color` CSS variable) used for the header rule, section-title underlines, and company/institution names — no second color, no gradient
+- **Section headers**: 12px, uppercase, black text with a solid 2px accent-color underline (not a colored fill)
+- **Body**: 11px, line-height 1.5
+- **Work Experience entries**: one bold line combining role and company — `{{ROLE}} — {{COMPANY}}` — not stacked on two lines; dates/location right-aligned
+- **No colored pill/badge backgrounds** anywhere (competencies, project badges) — plain text only
 - **Margins**: 0.6in
 - **Background**: pure white
 
 ## Section order (optimized "6-second recruiter scan")
 
-1. Header (large name, gradient, contact, portfolio link)
+1. Header (centered name, optional role-title line, accent rule, contact row)
 2. Professional Summary (3-4 lines, keyword-dense)
-3. Core Competencies (6-8 keyword phrases in flex-grid)
+3. Skills (languages + technical, categorized plain-text list — this also carries the JD-matched keyword phrases that used to live in a separate Core Competencies section; see Step 13)
 4. Work Experience (reverse chronological)
 5. Projects (top 3-4 most relevant)
 6. Education & Certifications
-7. Skills (languages + technical)
 
 ## Keyword injection strategy (ethical, truth-based)
 
@@ -124,6 +126,7 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
   "page_format": "letter",
   "candidate": {
     "name": "Jane Smith",
+    "title": "Software Engineer | Machine Learning",
     "phone": "+1 415 555 0100",
     "email": "jane@example.com",
     "linkedin": { "url": "https://linkedin.com/in/janesmith", "display": "linkedin.com/in/janesmith" },
@@ -135,7 +138,6 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
   },
   "sections": {
     "summary": "Professional Summary",
-    "competencies": "Core Competencies",
     "experience": "Work Experience",
     "projects": "Projects",
     "education": "Education",
@@ -143,7 +145,6 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
     "skills": "Skills"
   },
   "summary": "Personalized summary with JD keywords injected (honest vs cv.md).",
-  "competencies": ["RAG Pipelines", "LLMOps", "Kubernetes & Docker"],
   "experience": [
     {
       "company": "Company Name",
@@ -164,7 +165,8 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
   ],
   "skills": [
     { "category": "Languages", "items": "Python, JavaScript, C++" },
-    { "category": "Frameworks", "items": ["FastAPI", "React", "PyTorch"] }
+    { "category": "Frameworks", "items": ["FastAPI", "React", "PyTorch"] },
+    { "category": "Focus Areas", "items": ["RAG Pipelines", "LLMOps", "Kubernetes & Docker"] }
   ]
 }
 ```
@@ -176,6 +178,7 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
 | `lang` | string | CV language code (`en`, `es`, `zh-CN`, `ja`, `ar`). Drives language-specific CSS: `zh-CN` enables Simplified Chinese fonts and strict CJK line breaking; `ja` enables a Japanese CJK font fallback; `ar` enables RTL + Arabic fonts. Defaults to `en`. |
 | `page_format` | string | `letter` → `8.5in` page width, `a4` → `210mm`. Defaults to `letter`. Pass the SAME value to `generate-pdf.mjs --format`. |
 | `candidate.name` | string | From `profile.yml`. |
+| `candidate.title` | string | Optional role-title line under the name (e.g. "Software Engineer \| Machine Learning \| Data Scientist"). Empty/absent emits no line, rendering identical to the layout without it. |
 | `candidate.phone` | string | Optional — **omit or leave empty** to drop the `tel:` link and its separator (no empty cell). |
 | `candidate.email` | string | From `profile.yml`. |
 | `candidate.linkedin` | `{url, display}` | Optional — omit to drop the item and its separator. |
@@ -186,8 +189,7 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
 | `candidate.photo_style` | string | Optional photo framing: `rounded` (default), `circle`, or `square`. Read it from `candidate.photo_style` in `config/profile.yml`; invalid values fail before HTML is written. |
 | `sections` | object | Optional section-title overrides; not used in this fork (English only) — omit to use the English defaults shown above. |
 | `summary` | string | Personalized summary with keywords. |
-| `competencies` | string[] | 6-8 keyword phrases → competency tags. |
-| `experience[]` | object | `company`, `role`, `location` (optional), `dates`, `bullets` (reordered, keyword-injected). |
+| `experience[]` | object | `company`, `role`, `location` (optional), `dates`, `bullets` (reordered, keyword-injected). Renders as one bold line "`role` — `company`". |
 | `projects[]` | object | `name`, `badge` (optional), `tech` (optional), `description` (a `bullets` array is also accepted and joined into the description line). |
 | `education[]` | object | `title` (degree), `org` (institution), `year`, `description` (optional). |
 | `certifications[]` | object | `title`, `org`, `year`. |

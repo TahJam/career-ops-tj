@@ -9,7 +9,7 @@
      the PDF pipeline injects as a later :root block. Defaults below reproduce the
      original hardcoded values, so a profile without a `style:` block is unchanged. */
   :root {
-    --accent-color: hsl(187 74% 32%);
+    --accent-color: hsl(212 60% 38%);
     --font-family: "Liberation Sans", 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif;
     --font-size: 11px;
     /* Matches generate-pdf.mjs's PDF_PAGE_MARGIN — the actual PDF page margin
@@ -71,6 +71,7 @@
   /* === HEADER === */
   .header {
     margin-bottom: 20px;
+    text-align: center;
   }
 
   .header h1 {
@@ -79,20 +80,31 @@
     font-weight: 700;
     color: #1a1a2e;
     letter-spacing: -0.02em;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     line-height: 1.1;
   }
 
+  /* Optional role-title line under the name (e.g. "Software Engineer |
+     Machine Learning | Data Scientist"). Empty/absent {{HEADER_TITLE}} emits
+     no element, so a payload without candidate.title renders unchanged. */
+  .header-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+  }
+
   .header-gradient {
-    height: 2px;
-    background: linear-gradient(to right, var(--accent-color), hsl(270, 70%, 45%));
-    border-radius: 1px;
-    margin-bottom: 10px;
+    height: 1.5px;
+    background: var(--accent-color);
+    margin: 0 auto 10px;
   }
 
   .contact-row {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 8px 14px;
     font-family: var(--font-family);
     font-size: 10.5px;
@@ -140,8 +152,8 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--accent-color);
-    border-bottom: 1.5px solid #e2e2e2;
+    color: #1a1a2e;
+    border-bottom: 2px solid var(--accent-color);
     padding-bottom: 4px;
     margin-bottom: 10px;
     line-height: 1.2;
@@ -164,24 +176,6 @@
     white-space: nowrap;
   }
 
-  /* === CORE COMPETENCIES === */
-  .competencies-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .competency-tag {
-    font-family: var(--font-family);
-    font-size: 10px;
-    font-weight: 500;
-    color: hsl(187, 74%, 28%);
-    background: hsl(187, 40%, 95%);
-    padding: 4px 10px;
-    border-radius: 3px;
-    border: 1px solid hsl(187, 40%, 88%);
-  }
-
   /* === WORK EXPERIENCE === */
   .job {
     margin-bottom: 14px;
@@ -195,24 +189,19 @@
     margin-bottom: 4px;
   }
 
-  .job-company {
+  /* Combined "Role — Company" line (replaces the old separate
+     .job-company / .job-role split). */
+  .job-title {
     font-family: var(--font-family);
-    font-size: 12.5px;
-    font-weight: 600;
-    color: hsl(270, 70%, 45%);
+    font-size: 12px;
+    font-weight: 700;
+    color: #1a1a2e;
   }
 
   .job-period {
     font-size: 10.5px;
     color: #777;
     white-space: nowrap;
-  }
-
-  .job-role {
-    font-size: var(--font-size);
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 6px;
   }
 
   .job-location {
@@ -245,16 +234,13 @@
     font-family: var(--font-family);
     font-size: 11.5px;
     font-weight: 600;
-    color: hsl(270, 70%, 45%);
+    color: var(--accent-color);
   }
 
   .project-badge {
     font-size: 9px;
     font-weight: 500;
-    color: var(--accent-color);
-    background: hsl(187, 40%, 95%);
-    padding: 1px 6px;
-    border-radius: 2px;
+    color: #777;
     margin-left: 6px;
   }
 
@@ -290,7 +276,7 @@
   }
 
   .edu-org {
-    color: hsl(270, 70%, 45%);
+    color: var(--accent-color);
     font-weight: 500;
   }
 
@@ -330,7 +316,7 @@
   }
 
   .cert-org {
-    color: hsl(270, 70%, 45%);
+    color: var(--accent-color);
     white-space: nowrap;
   }
 
@@ -387,7 +373,6 @@
   .header,
   .edu-item,
   .cert-item,
-  .competency-tag,
   .skill-item {
     break-inside: avoid;
     page-break-inside: avoid;
@@ -396,8 +381,7 @@
   /* Keep a heading attached to the content that follows it, so headings are not
      orphaned at the bottom of a page. */
   .section-title,
-  .job-company,
-  .job-role,
+  .job-title,
   .job-location,
   .project-title {
     break-after: avoid;
@@ -413,15 +397,10 @@
 
   html[lang="ar"] .header h1,
   html[lang="ar"] .section-title,
-  html[lang="ar"] .job-company,
+  html[lang="ar"] .job-title,
   html[lang="ar"] .project-title,
-  html[lang="ar"] .competency-tag,
   html[lang="ar"] .skill-category {
     font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-  }
-
-  html[lang="ar"] .header-gradient {
-    background: linear-gradient(to left, var(--accent-color), hsl(270, 70%, 45%));
   }
 
   html[lang="ar"] .job ul {
@@ -462,9 +441,8 @@
 
   html[lang="ja"] .header h1,
   html[lang="ja"] .section-title,
-  html[lang="ja"] .job-company,
+  html[lang="ja"] .job-title,
   html[lang="ja"] .project-title,
-  html[lang="ja"] .competency-tag,
   html[lang="ja"] .skill-category {
     font-family: 'Liberation Sans', 'Helvetica Neue', Arial, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
       'Yu Gothic', 'YuGothic', 'Noto Sans CJK JP', 'Noto Sans JP',
@@ -488,17 +466,15 @@
 
   html[lang="zh-CN"] .header h1,
   html[lang="zh-CN"] .section-title,
-  html[lang="zh-CN"] .job-company,
+  html[lang="zh-CN"] .job-title,
   html[lang="zh-CN"] .project-title,
   html[lang="zh-CN"] .contact-row,
-  html[lang="zh-CN"] .competency-tag,
   html[lang="zh-CN"] .skill-category,
   html[lang="zh"] .header h1,
   html[lang="zh"] .section-title,
-  html[lang="zh"] .job-company,
+  html[lang="zh"] .job-title,
   html[lang="zh"] .project-title,
   html[lang="zh"] .contact-row,
-  html[lang="zh"] .competency-tag,
   html[lang="zh"] .skill-category {
     font-family: 'Liberation Sans', 'Helvetica Neue', Arial, 'PingFang SC',
       'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
@@ -525,6 +501,7 @@
   <!-- HEADER -->
   <div class="header">
     <h1>{{NAME}}</h1>
+    {{HEADER_TITLE}}
     <div class="header-gradient"></div>
     <div class="contact-row">
       <a href="tel:{{PHONE}}">{{PHONE}}</a>
@@ -545,12 +522,10 @@
     <div class="summary-text">{{SUMMARY_TEXT}}</div>
   </div>
 
-  <!-- CORE COMPETENCIES -->
+  <!-- SKILLS -->
   <div class="section">
-    <div class="section-title">{{SECTION_COMPETENCIES}}</div>
-    <div class="competencies-grid">
-      {{COMPETENCIES}}
-    </div>
+    <div class="section-title">{{SECTION_SKILLS}}</div>
+    {{SKILLS}}
   </div>
 
   <!-- WORK EXPERIENCE -->
@@ -575,12 +550,6 @@
   <div class="section">
     <div class="section-title">{{SECTION_CERTIFICATIONS}}</div>
     <div class="cert-table">{{CERTIFICATIONS}}</div>
-  </div>
-
-  <!-- SKILLS -->
-  <div class="section">
-    <div class="section-title">{{SECTION_SKILLS}}</div>
-    {{SKILLS}}
   </div>
 
 </div>

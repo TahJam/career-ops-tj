@@ -524,6 +524,15 @@ function buildPhoto(candidate, name) {
   return `<img class="cv-photo cv-photo--${style}" src="${sanitizeImageSrc(photo)}" alt="${escapeHtml(name || '')}">`;
 }
 
+// Optional role-title line under the name (e.g. "Software Engineer | Machine
+// Learning | Data Scientist"). Empty/absent candidate.title emits no element,
+// so a payload without it renders byte-for-byte identical to before #2201.
+function buildHeaderTitle(candidate) {
+  const title = candidate && typeof candidate.title === 'string' ? candidate.title.trim() : '';
+  if (!title) return '';
+  return `<div class="header-title">${escapeHtml(title)}</div>`;
+}
+
 function renderReport(payload, partials) {
   const sectionTitles = { ...DEFAULT_SECTION_TITLES, ...(payload.sections || {}) };
   const candidate = payload.candidate || {};
@@ -564,6 +573,7 @@ function renderHtml(template, payload, templatePath) {
   // no <img>), so they are rebuilt as whole blocks before placeholder fill.
   let html = template.replace(CONTACT_ROW_RE, () => buildContactRow(candidate));
   html = html.replace(/\{\{PHOTO\}\}/g, () => buildPhoto(candidate, candidate.name));
+  html = html.replace(/\{\{HEADER_TITLE\}\}/g, () => buildHeaderTitle(candidate));
 
   // Drop the optional sections (projects, education) that have no entries, so
   // an absent one leaves no bare header behind. See cv-sections-core.mjs.
@@ -742,13 +752,16 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Guard the escaping contract: the raw ampersand from "Kubernetes & Docker"
+  // Guard the escaping contract: the raw ampersand from the summary's "R&D"
   // must reach the output escaped, and no unescaped literal must survive.
-  if (!html.includes('Kubernetes &amp; Docker')) {
-    console.error('Self-test failed: HTML escaping did not apply to competency text');
+  // (Competencies/#2201: this used to check the competency-tag text, which no
+  // longer renders at all in the base template — summary text covers the same
+  // escaping path.)
+  if (!html.includes('R&amp;D')) {
+    console.error('Self-test failed: HTML escaping did not apply to summary text');
     process.exit(1);
   }
-  if (/Kubernetes & Docker/.test(html)) {
+  if (/R&D/.test(html)) {
     console.error('Self-test failed: found an unescaped ampersand in output');
     process.exit(1);
   }
@@ -796,8 +809,10 @@ async function runSelfTest() {
     console.error('Self-test failed: experience section is missing .job class — partial may be broken');
     process.exit(1);
   }
-  if (!html.includes('class="competency-tag"')) {
-    console.error('Self-test failed: competencies section is missing .competency-tag class');
+  // Core Competencies was merged into Skills (#2201) — the base template no
+  // longer renders a .competency-tag pill section at all.
+  if (html.includes('class="competency-tag"')) {
+    console.error('Self-test failed: .competency-tag rendered — Core Competencies should be merged into Skills');
     process.exit(1);
   }
   if (!html.includes('class="project"')) {
@@ -813,9 +828,25 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Guard that partials-based rendering produces the correct field values.
-  if (!html.includes('Test Corp') || !html.includes('Test Engineer')) {
-    console.error('Self-test failed: experience entry fields not found in output');
+  // Guard that partials-based rendering produces the correct field values,
+  // combined onto one .job-title line (#2201: "Role — Company").
+  if (!html.includes('class="job-title"') || !html.includes('Test Engineer — Test Corp')) {
+    console.error('Self-test failed: experience entry fields not found in combined .job-title line');
+    process.exit(1);
+  }
+
+  // Guard the optional header-title line (#2201): absent by default (sample has
+  // no candidate.title) → no element; present → rendered under the name.
+  if (html.includes('class="header-title"')) {
+    console.error('Self-test failed: .header-title rendered when candidate.title is absent');
+    process.exit(1);
+  }
+  const htmlWithTitle = renderHtml(template, {
+    ...sample,
+    candidate: { ...sample.candidate, title: 'Software Engineer | Machine Learning' },
+  }, TEMPLATE_PATH);
+  if (!htmlWithTitle.includes('class="header-title"') || !htmlWithTitle.includes('Software Engineer | Machine Learning')) {
+    console.error('Self-test failed: .header-title not rendered when candidate.title is present');
     process.exit(1);
   }
 
