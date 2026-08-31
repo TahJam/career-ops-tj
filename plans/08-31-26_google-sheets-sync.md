@@ -74,17 +74,21 @@ row6  "Link" → https://job-boards.greenhouse.io/spacex/jobs/8379301002
 
 All 24 data rows carry one. A `values.update` writing the string `"Link"` keeps the text and **silently destroys the link**. Since `hyperlink` cannot be written back, the fix is to write `=HYPERLINK("<url>","Link")` with `USER_ENTERED` — renders identically, and is round-trippable forever after.
 
-**H3 — Column H has a `ONE_OF_LIST` data validation, and it stops at row 30.**
+**H3 — Column H has a `ONE_OF_LIST` data validation.**
 
 ```
 "Submitted - Waiting" | "Rejected" | "Interviewing" | "Offer Received" | "Offer Accepted"
 ```
 
-Applied to rows 2–30; data ends at row 25. Growing past row 30 drops the dropdown unless validation is extended.
+~~Applied to rows 2–30; growing past row 30 drops the dropdown.~~ **Corrected during implementation:** the initial probe only read `A1:J30`, so the validation appeared to stop at row 30. A full-grid read shows it covers rows 2–1000. **Not a hazard** — no validation extension is needed. Writes must still emit only these five values.
+
+The `status_map` in `config/plugins.yml` is what enforces that.
 
 **H4 — Column C is a real date, not text.**
 
-`userEnteredValue` is `{"numberValue": 46042}` with `numberFormat {type: DATE, pattern: "mm/dd/yyyy"}`. Writing `RAW` strings breaks `COUNTIF(C:C,TODAY()-1)`. Writes must use `USER_ENTERED`; rows past the formatted range need the format extended.
+`userEnteredValue` is `{"numberValue": 46042}` with `numberFormat {type: DATE, pattern: "mm/dd/yyyy"}`. Writing `RAW` strings breaks `COUNTIF(C:C,TODAY()-1)`. Writes must use `USER_ENTERED`.
+
+Unlike H3 this one **is** real: the DATE format stops at row 25 (verified `dateFormatLastRow=25` against the live grid), so appended rows need it extended or their dates land as plain text and drop out of the `COUNTIF(C:C,…)` counters.
 
 ### The JOIN, measured
 
