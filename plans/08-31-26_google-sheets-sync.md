@@ -1,7 +1,7 @@
 # Google Sheets Sync
 
 **Date:** 2026-08-31
-**Status:** Plan — not implemented
+**Status:** Implemented on branch `plugin-googlesheet` (2026-08-31). First full sync ran: 37 rows, 13 added. Sidecar formulas, hyperlinks, dropdown validation and date formatting all verified intact afterwards.
 **Goal:** Mirror the career-ops tracker into the existing "Applications" Google Sheet, without damaging anything already in that sheet.
 **Shape:** A bundled plugin at `plugins/sheets/`, driven by `node plugins.mjs run sheets export`. See §3 — it supersedes an earlier root-script recommendation that rested on two incorrect readings of the plugin contract.
 
