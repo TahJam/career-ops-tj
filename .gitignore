@@ -125,3 +125,9 @@ process/scripts/
 # (see DATA_CONTRACT.md). Re-include them past the unanchored user-layer
 # patterns above (cv.md, portals.yml).
 !test-fixtures/**
+
+# any auth files or cert files
+auth/
+certs/
+*.pem
+*.key

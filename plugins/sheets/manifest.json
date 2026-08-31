@@ -1,0 +1,14 @@
+{
+  "id": "sheets",
+  "name": "Google Sheets sync",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Mirror your application tracker into your own Google Sheet.",
+  "hooks": ["export"],
+  "requiredEnv": ["GOOGLE_SHEET_ID", "GOOGLE_AUTH_PATH"],
+  "optionalEnv": ["GOOGLE_SYNC", "SHEETS_SYNC_MODE"],
+  "allowedHosts": ["oauth2.googleapis.com", "sheets.googleapis.com"],
+  "skill": "skill.md",
+  "humanInTheLoop": true,
+  "homepage": "https://developers.google.com/sheets/api"
+}
