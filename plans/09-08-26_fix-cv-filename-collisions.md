@@ -1,8 +1,7 @@
 # Fix tailored-CV filename collisions (silent CV overwrite in batch runs)
 
-> **Status: implemented 2026-09-08** on `fix/cv-filename-collisions`. Steps 1-6 landed; Step 7 (remediating
-> the existing damage) is still open and needs the user's input on which CV was actually submitted for the
-> three Applied Perplexity roles.
+> **Status: complete 2026-09-08** on `fix/cv-filename-collisions`. Steps 1-6 (the fix) landed as commits;
+> Step 7 (remediation) is done as a record-only pass against gitignored user data.
 >
 > Two deviations from the plan as written, both recorded below:
 > - **Step 5 (`openai-tailor.mjs`) was dropped** — unreachable in this Anthropic-only fork. See
@@ -36,7 +35,7 @@ Three reports claim the same PDF, and all three are marked `Applied` with `✅` 
 | 144 | MTS (SWE, Enterprise Adoption) | Applied | *same file* |
 | 145 | MTS (SWE, Agent Capabilities) | Applied | *same file* |
 
-`data/pdf-index.tsv` attributes the surviving file to report **144**, so 141's and 145's tailored CVs no longer exist on disk. If the user attached the on-disk file when applying to all three, **all three Perplexity applications carry the Enterprise Adoption CV.** The same shape applies to the Hightouch group (149-152, one surviving `cv-candidate-hightouch-*`) and the 2026-07-30 Sierra group (083-086, 092).
+`data/pdf-index.tsv` attributes the surviving file to report **144**, so 141's and 145's tailored CVs no longer exist on disk. If the user attached the on-disk file when applying to all three, **all three Perplexity applications carry the Enterprise Adoption CV.** ~~The same shape applies to the Hightouch group (149-152) and the 2026-07-30 Sierra group (083-086, 092).~~ **Corrected during Step 7:** it does not. A CV is only generated above `auto_pdf_score_threshold` (4.0), and in those two groups exactly one row cleared it — Hightouch 151 (4.1) and Sierra 092 (4.0) — so one CV was generated in each and nothing collided. The Perplexity trio is the only affected group. See Step 7.
 
 A batch worker already diagnosed this in its own log — `batch/logs/144-52.log:16`:
 
@@ -129,14 +128,51 @@ This is defense in depth: Steps 1-3 stop the collision at the source, this catch
 - **Manifest test:** write a manifest row for report `141` at path `P`, call `updatePDFManifest('144', P, …)`, assert the warning fires. Extends the existing manifest fixtures around `test-all.mjs:7805` / `:8398`.
 - Confirm the `output/cv-x.html` CRLF-guard fixture (`:1596-1602`) is unaffected — it is a synthetic path, not the convention.
 
-### 7. Remediate existing damage (separate, user-confirmed pass)
+### 7. Remediate existing damage — DONE (record-only, user-confirmed)
 
-Do **not** fold into the code change. After Steps 1-6 land:
+**The blast radius in this plan's Context section was overstated.** It listed Hightouch (149-152) and Sierra
+(083-086, 092) as affected because each had several roles at one company and one surviving CV file. That
+skipped a gate: `config/profile.yml` sets `auto_pdf_score_threshold: 4.0`, so a CV is only generated for a
+report scoring at or above 4.0. Checking each group against it:
 
-1. Report an inventory of reports whose `**PDF:**` path is shared or missing from `pdf-index.tsv` — currently 141/144/145 (Perplexity), plus the Hightouch (149-152) and Sierra (083-086, 092) groups.
-2. Ask the user, per group, which CV was actually submitted. **This is the load-bearing question** — for the three Applied Perplexity roles, the risk is that one CV was attached to all three.
-3. For rows where the tailored CV is genuinely lost, offer to regenerate under the new naming via `/career-ops pdf` — and mark rows that cannot be reconstructed rather than silently regenerating something that was never sent.
-4. Do not rename existing `output/` files: `pdf-index.tsv` and report headers reference them by path, and renaming breaks correct rows to cosmetically fix broken ones.
+| Group | Rows clearing 4.0 | PDFs generated | Collision |
+|---|---|---|---|
+| Perplexity 2026-09-02 | 141 (4.2), 144 (4.3), 145 (4.3) | 3 | **yes, three-way** |
+| Hightouch 2026-09-02 | 151 (4.1) | 1 | no |
+| Sierra 2026-07-30 | 092 (4.0) | 1 | no |
+
+Only the Perplexity trio was ever affected. Hightouch and Sierra each generated exactly one CV and needed
+nothing.
+
+**What actually happened**, confirmed by the user: they submitted the single surviving file — report 144's
+Enterprise Adoption tailoring — for all three Perplexity roles, which is how the bug surfaced. So no CV that
+was ever *sent* was lost, and the three reports' `**PDF:**` headers are factually correct: they all name the
+document that really went out. What was lost is the 141- and 145-tailored CVs, which were overwritten before
+they could be used.
+
+**Resolution — record the truth, regenerate nothing.** A regenerated CV was never submitted; leaving one in
+`output/` would invite mistaking it for the real record. If 141 or 145 advances, generate then — the fix is in
+place, so it gets its own filename.
+
+1. Tracker notes added via `set-status.mjs --report N Applied --note …` (the canonical write path; status
+   unchanged, note appended idempotently):
+   - **141** and **145** — record that the submitted CV was 144's Enterprise Adoption tailoring and that no
+     role-tailored CV was ever sent. This matters for interview prep: if either advances, the document the
+     interviewer holds is tailored for a different role.
+   - **144** — record that its CV was also submitted for 141 and 145, so the shared file is legible from any
+     of the three rows.
+2. `data/pdf-index.tsv` rows added for **141** and **145** pointing at the same submitted PDF, so
+   `find.mjs` / `outcome.mjs` / `sync-pdf-flags.mjs` / the dashboard stop reporting "no PDF" for rows the
+   tracker marks `✅`. Verified: all three now resolve; `sync-pdf-flags --dry-run` reports 0 changes needed
+   and `verify-pipeline.mjs` stays at 0 errors.
+3. Existing `output/` files were **not** renamed — `pdf-index.tsv` and the report headers reference them by
+   path, so renaming would break correct rows to cosmetically fix broken ones.
+
+Note that these three rows are a deliberate, historical exception to the one-row-per-path rule: they record
+one document genuinely submitted for three applications. Regenerating any of the three CVs later will trip the
+Step 4 collision warning and drop the other two rows — which is correct, and the warning explains why.
+
+Both files are user-layer and gitignored, so this step leaves no commit.
 
 ## Verification
 
