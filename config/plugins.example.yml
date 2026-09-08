@@ -39,11 +39,11 @@ plugins:
   # JSON key. Share the spreadsheet with that key's client_email as an EDITOR.
   # Run via `node plugins.mjs run sheets export [--dry-run]`.
   #
-  # One command drives both sync modes: scope comes from the plugin's cursor at
-  # data/sheets-sync-state.json, not a flag. No state file => full sync (so the
-  # first run is self-bootstrapping); otherwise it replays data/status-log.tsv
-  # from the cursor. `rm` the state file, or set SHEETS_SYNC_MODE=full, to force
-  # a full rebuild. GOOGLE_SYNC=false is honoured as a kill-switch.
+  # Every run reconciles the whole tab and decides by COMPARING VALUES against
+  # the sheet, so a status changed by set-status.mjs, the dashboard,
+  # merge-tracker.mjs or a hand edit is all picked up alike. When the sheet
+  # already matches, it reads and writes nothing. SHEETS_SYNC_MODE=full rewrites
+  # anyway; GOOGLE_SYNC=false is honoured as a kill-switch.
   sheets:
     enabled: false
     # Only this tab is ever written. Rows dated outside its year are skipped.

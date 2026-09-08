@@ -371,3 +371,49 @@ Not blockers — things to expect and hand-correct once.
 - **Apply dates for the 13 backfill rows will mostly be evaluation dates.** `data/status-log.tsv` has only 4 entries; it started recording partway through this search. Reports 33, 34, 59, 62, 72, 82, 96, 106, 113, 114 will fall back to the tracker's evaluation date, which runs a few days later than the true apply date. Correct by hand in the sheet afterward — the reconciler treats the sheet as authoritative on Date, so corrections stick.
 - **`Referral` detection is heuristic.** `via:` is `null` on most reports; report #82 records "Applying via friend referral at Oura" in prose only. Expect a few manual fixes.
 - **`Discarded` has no dropdown value** — specified as leave-and-warn. If a sixth value is wanted, add it in the sheet UI first.
+
+---
+
+## 6. Post-ship fix: the delta gate asked the wrong question
+
+**Reported 2026-09-08:** a status changed in the dashboard (`npm run serve:dashboard`) never reached the Google Sheet.
+
+### Root cause — a design flaw in §2.4, not a missing call
+
+§2.4 gated the sync on `data/status-log.tsv`: *"did `set-status.mjs` record a transition?"* The question it needed to answer was *"does the sheet still match the tracker?"*
+
+That journal has exactly **one writer**, `set-status.mjs`, and four readers. The Go dashboard's `UpdateApplicationStatusAndNotes` (`dashboard/internal/data/career.go`) takes the tracker lock, rewrites the Status cell and writes atomically — without appending a ledger line. `plugins/sheets/index.mjs` then returned at the gate **before ever reading the sheet or the tracker**, reporting `nothing pending since the last sync` while the mirror went stale.
+
+The dashboard was not the only silent writer. `merge-tracker.mjs`, `normalize-statuses.mjs` and any hand edit bypass the ledger too, so fixing only the dashboard would have been whack-a-mole.
+
+Demonstrated side by side against the live sheet, with `#93 NVIDIA Applied → Interview` written to the tracker and the journal deliberately untouched:
+
+```
+old code:  nothing pending since the last sync.        ← silent failure
+new code:  plan: 45 row(s) — 0 added, 1 status update(s)
+```
+
+### Fix 1 — gate on values, not on a proxy (`plugins/sheets/index.mjs`)
+
+Every run now reconciles the whole union and compares the planned rows against the sheet's current content (`planIsNoOp` / `currentSheetValues` in `_reconcile.mjs`), writing only on a real difference.
+
+Column E needs reconstructing before comparison: a read returns the cell text `"Link"` with the URL in the separate output-only `hyperlink` field, while a write emits `=HYPERLINK(url,"Link")`. Comparing raw cells would report a difference on every row forever.
+
+This is correct for **every** writer, present and future, including hand edits — it cannot go stale because it never trusts a proxy. Cost is one extra Sheets read per run (~1 API call); the old no-op path skipped even that.
+
+`SHEETS_SYNC_MODE=full` keeps a purpose: rewrite even when values already match. The cursor is still maintained for the ledger's other readers but no longer decides anything.
+
+### Fix 2 — stop the dashboard being a silent writer (`dashboard/internal/data/career.go`)
+
+The same root cause blinded two more consumers that the sheet bug happened to expose: `funnel-velocity.mjs` and `company-history.mjs` both prefer the ledger over tracker notes when resolving applied-dates, so every dashboard status change was invisible to them.
+
+`appendStatusLog` now records the transition inside the tracker lock, in `set-status.mjs`'s exact six-field format with `dashboard` as the source. Best-effort by design — the tracker write has already succeeded, so a failed append warns rather than erroring, matching `set-status.mjs`. A no-op re-selection appends nothing: applied-date resolution reads the *first* transition into a state, so phantom duplicates would corrupt it.
+
+### Coverage
+
+- `tests/sheets-reconcile.test.mjs` — 6 assertions: a read-back row round-trips to its own planned form, an untouched sheet is a no-op, **a status changed with no journal entry is still detected**, and length changes are caught.
+- `dashboard/internal/data/career_test.go` — `TestUpdateApplicationStatusAppendsToStatusLog`: field shape and source, append-don't-truncate on a second transition, and no ledger line for a no-op re-selection.
+
+### Lesson
+
+A cursor over a journal is only as trustworthy as the journal's writer discipline. With one writer and four readers, that ledger was never a safe synchronisation primitive — comparing actual state is both simpler and unconditionally correct.

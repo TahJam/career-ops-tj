@@ -85,7 +85,7 @@ export default {
     // (set-status.mjs); the Go dashboard, merge-tracker.mjs, normalize-statuses
     // and hand edits all change a status without appending to it. Gating on it
     // let the sheet go stale with the sync reporting success — see
-    // plans/08-31-26_google-sheets-sync.md §7.
+    // plans/08-31-26_google-sheets-sync.md §6.
     //
     // The cursor is still tracked so the journal stays meaningful to its other
     // readers, but it no longer decides whether to run.
