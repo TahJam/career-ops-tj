@@ -35,7 +35,7 @@ latex:
 ## Pipeline
 
 1. Resolve source `.tex` path (see above)
-2. Run: `node extract-latex-content.mjs <source.tex> --out /tmp/cv-slots-{company}.json`
+2. Run: `node extract-latex-content.mjs <source.tex> --out /tmp/cv-slots-{company}-{NNN}.json`
 3. If `supported: false` → show `error` + `hint`; do not proceed
 4. Read JD (from context, report, or ask user)
 5. Tailor **only** the `slots[].text` values for JD fit (same ethics as `modes/latex.md` / `pdf`):
@@ -54,7 +54,7 @@ latex:
 }
 ```
 
-7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company}.json output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex`
+7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company}-{NNN}.json output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex`
 8. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf --compile-only`
 9. Report: family, slot count, patched count, `.tex` path, `.pdf` path (or compile error)
 
