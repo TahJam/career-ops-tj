@@ -54,9 +54,11 @@ latex:
 }
 ```
 
-7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company}.json output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex`
-8. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf --compile-only`
+7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company}.json output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex`
+8. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf --compile-only`
 9. Report: family, slot count, patched count, `.tex` path, `.pdf` path (or compile error)
+
+`{NNN}` is the report number from `reports/{NNN}-{company}-{YYYY-MM-DD}.md`. It keeps two roles at the same company from overwriting each other's CV — never drop it. Omit it only for a true one-off with no report.
 
 **Requires:** `tectonic` or `pdflatex` on PATH (same as `latex` mode).
 
