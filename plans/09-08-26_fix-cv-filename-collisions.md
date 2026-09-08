@@ -1,5 +1,17 @@
 # Fix tailored-CV filename collisions (silent CV overwrite in batch runs)
 
+> **Status: implemented 2026-09-08** on `fix/cv-filename-collisions`. Steps 1-6 landed; Step 7 (remediating
+> the existing damage) is still open and needs the user's input on which CV was actually submitted for the
+> three Applied Perplexity roles.
+>
+> Two deviations from the plan as written, both recorded below:
+> - **Step 5 (`openai-tailor.mjs`) was dropped** — unreachable in this Anthropic-only fork. See
+>   "Corroboration (not in scope to fix)". Remaining steps renumbered.
+> - **`/tmp` render payloads were also keyed on `{NNN}`** (not in the original plan). Found during the final
+>   sweep: `/tmp/cv-{candidate}-{company}.json` carried the same defect, and it is worse than a filename
+>   clash — the payload is written in one step and read in the next, so an overwrite renders *another role's
+>   content* under the correct filename.
+
 ## Context
 
 When a batch evaluates several roles at the **same company**, every worker writes its tailored CV to the same two paths and the last writer wins. All earlier workers' tailored CVs are destroyed, while their reports keep claiming a `**PDF:**` path that now holds someone else's CV.
