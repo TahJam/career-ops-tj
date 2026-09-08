@@ -1421,6 +1421,71 @@ try {
     fail('PDF manifest mishandles missing or external source HTML paths');
   }
 
+  // data/pdf-index.tsv holds one row per PDF path, so a second report writing
+  // the SAME path evicts the first report's row. Before CV filenames carried
+  // their report number that happened for real: reports 141 and 145 lost their
+  // rows to 144, leaving the tracker showing a PDF checkmark while find.mjs /
+  // outcome.mjs / sync-pdf-flags.mjs / the dashboard all reported "no PDF".
+  // The eviction still happens (there is only one file on disk to point at),
+  // but it must not be silent.
+  const { reconcilePDFManifest } = await import(pathToFileURL(join(ROOT, 'generate-pdf.mjs')).href);
+  const manifestHeader = '# report\tpdf\thtml\tformat\tdate — written by generate-pdf.mjs, do not edit\n';
+  const collided = reconcilePDFManifest(
+    manifestHeader + '141\toutput/cv-p-2026-09-02.pdf\toutput/cv-p.html\tletter\t2026-09-02\n',
+    { reportNum: '144', relPDF: 'output/cv-p-2026-09-02.pdf', relHTML: 'output/cv-p.html', format: 'letter', date: '2026-09-02' }
+  );
+  if (
+    collided.collisions.length === 1 &&
+    collided.collisions[0].previousReport === '141' &&
+    collided.collisions[0].incomingReport === '144' &&
+    collided.lines.length === 1 &&
+    collided.lines[0].startsWith('144\t')
+  ) {
+    pass('PDF manifest reports a same-path/different-report collision instead of evicting silently');
+  } else {
+    fail(`PDF manifest must flag a cross-report path collision: ${JSON.stringify(collided)}`);
+  }
+
+  // A report regenerating its own CV is the case the one-row-per-path rule
+  // exists for — it must stay silent, including across zero-padding ("008" and
+  // "8" are the same report).
+  const regenerated = reconcilePDFManifest(
+    manifestHeader + '008\toutput/cv-a.pdf\toutput/cv-a.html\tletter\t2026-01-01\n',
+    { reportNum: '8', relPDF: 'output/cv-a.pdf', relHTML: 'output/cv-a.html', format: 'letter', date: '2026-01-02' }
+  );
+  // An orphan row (no report number) has no owner to warn about.
+  const orphaned = reconcilePDFManifest(
+    manifestHeader + '\toutput/cv-o.pdf\t\tletter\t2026-01-01\n',
+    { reportNum: '010', relPDF: 'output/cv-o.pdf', relHTML: 'output/cv-o.html', format: 'letter', date: '2026-01-02' }
+  );
+  if (
+    regenerated.collisions.length === 0 && regenerated.lines.length === 1 &&
+    orphaned.collisions.length === 0 && orphaned.lines.length === 1
+  ) {
+    pass('PDF manifest stays quiet for self-regeneration (zero-padding aside) and orphan rows');
+  } else {
+    fail('PDF manifest raised a false collision for a regeneration or an orphan row');
+  }
+
+  // Unrelated rows must survive, and a report's own older PDF must still be
+  // superseded — the behaviour the collision check sits alongside.
+  const superseded = reconcilePDFManifest(
+    manifestHeader +
+      '001\toutput/cv-x.pdf\toutput/cv-x.html\tletter\t2026-01-01\n' +
+      '002\toutput/cv-old.pdf\toutput/cv-old.html\tletter\t2026-01-01\n',
+    { reportNum: '002', relPDF: 'output/cv-new.pdf', relHTML: 'output/cv-new.html', format: 'letter', date: '2026-01-02' }
+  );
+  if (
+    superseded.lines.length === 2 &&
+    superseded.lines[0].startsWith('001\toutput/cv-x.pdf') &&
+    superseded.lines[1].startsWith('002\toutput/cv-new.pdf') &&
+    superseded.collisions.length === 0
+  ) {
+    pass('PDF manifest keeps unrelated rows and supersedes a report\'s own stale row');
+  } else {
+    fail(`PDF manifest row replacement regressed: ${JSON.stringify(superseded.lines)}`);
+  }
+
   const injectedPageCss = injectPrintPageCss('<html><head><title>CV</title></head><body></body></html>', 'letter');
   if (
     injectedPageCss.includes('@page { size: Letter; margin: var(--page-margin, 0.6in); }') &&
@@ -2643,6 +2708,56 @@ if (
   pass('batch workers inherit company-type compensation reliability checks');
 } else {
   fail('batch prompt missing company-type compensation reliability checks');
+}
+
+// Tailored-CV filenames must carry the report number. A batch routinely
+// evaluates several roles at ONE company in parallel; with a company-slug-only
+// name every worker writes the same two paths and the last one to finish
+// silently destroys the others' CVs, while their reports keep pointing at a
+// PDF that now holds someone else's document. Observed live on 2026-09-02:
+// reports 141, 144 and 145 (three different Perplexity roles, all Applied) all
+// claimed output/cv-candidate-perplexity-2026-09-02.pdf, of which one file
+// existed. The bug lives in prompt text, so only a text assertion catches its
+// removal.
+if (
+  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html') &&
+  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf') &&
+  !/output\/cv-candidate-\{company-slug\}(?:-\{\{DATE\}\})?\.(?:html|pdf)/.test(batchPromptDoc) &&
+  batchPromptDoc.includes('Never drop `{{REPORT_NUM}}` from either filename')
+) {
+  pass('batch prompt keys tailored-CV filenames on the report number (no same-company overwrite)');
+} else {
+  fail('batch prompt CV filenames must carry {{REPORT_NUM}} — company-slug-only names overwrite sibling roles');
+}
+
+// modes/pdf.md is not only the interactive path: batch-tailor.mjs spawns one
+// `claude -p --append-system-prompt-file modes/pdf.md` worker per completed
+// batch row above --min-score, sequentially, against the same output/ dir. So
+// the same collision applies here and the fix has to hold in both places.
+const pdfModeDoc = readFile('modes/pdf.md');
+if (
+  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}.html') &&
+  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
+  pdfModeDoc.includes('Flat CV paths must carry `{NNN}`, the report number') &&
+  pdfModeDoc.includes('batch-tailor.mjs')
+) {
+  pass('pdf mode keys flat CV paths on the report number and flags the batch-tailor fan-out');
+} else {
+  fail('modes/pdf.md flat CV paths must carry {NNN} — batch-tailor.mjs workers otherwise overwrite each other');
+}
+
+// Same collision, LaTeX path.
+for (const latexMode of ['modes/latex.md', 'modes/latex-tex.md']) {
+  const doc = readFile(latexMode);
+  if (
+    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex') &&
+    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
+    !/output\/cv-\{candidate\}-\{company\}-\{YYYY-MM-DD\}\.(?:tex|pdf)/.test(doc)
+  ) {
+    pass(`${latexMode} keys CV output paths on the report number`);
+  } else {
+    fail(`${latexMode} CV output paths must carry {NNN} to survive multi-role companies`);
+  }
 }
 
 const pipelineMode = readFile('modes/pipeline.md');
