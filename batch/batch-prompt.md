@@ -328,7 +328,7 @@ Report header:
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **Work Auth:** {✅ Sponsors | ➖ Not needed | ⚠️ Unstated | ⛔ No sponsorship}
 **URL:** {{URL}}
-**PDF:** {output/cv-candidate-{company-slug}-{{DATE}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {company-slug} to create on demand`}
+**PDF:** {output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {company-slug} to create on demand`}
 **Batch ID:** {{ID}}
 
 
@@ -405,16 +405,18 @@ If score is greater than or equal to the threshold:
 8. Reorder experience bullets by relevance.
 9. Build a 6-8 item competency grid.
 10. Inject keywords ethically into existing achievements; never invent skills or metrics.
-11. Write HTML to `output/cv-candidate-{company-slug}.html`.
+11. Write HTML to `output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html`.
 12. Run:
 
 ```bash
 node generate-pdf.mjs \
-  output/cv-candidate-{company-slug}.html \
-  output/cv-candidate-{company-slug}-{{DATE}}.pdf \
+  output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html \
+  output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf \
   --format={letter|a4} \
   --report={{REPORT_NUM}}
 ```
+
+> **Never drop `{{REPORT_NUM}}` from either filename.** It is the only thing keeping two roles at the same company from overwriting each other's CV. Batches routinely evaluate several roles at one employer in parallel; with a company-slug-only name the last worker to finish silently destroys every earlier worker's tailored CV, and their reports keep pointing at a `**PDF:**` path that now holds someone else's document. The report number is unique per evaluation (allocated by `reserve-report-num.mjs`), so it makes the filename collision-proof and pairs it 1:1 with `reports/{{REPORT_NUM}}-{company-slug}-{{DATE}}.md`.
 
 On success, use `pdf_emoji` = `✅` and set `"pdf"` to the output path in the final JSON.
 
