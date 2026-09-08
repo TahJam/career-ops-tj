@@ -24,7 +24,9 @@ import { fileURLToPath } from 'url';
 
 import { readTab, readFormulas, a1, isoToUsDate, colLetter } from './_sheets.mjs';
 import { getAccessToken, SCOPE_WRITE } from './_auth.mjs';
-import { buildDesiredRows, planWrites, pendingFromJournal, SYNCED_STATES } from './_reconcile.mjs';
+import {
+  buildDesiredRows, planWrites, pendingFromJournal, currentSheetValues, planIsNoOp,
+} from './_reconcile.mjs';
 import { applyDates, resumeNames, reportFacts, reportNumsFromCell, profileLocation } from './_sources.mjs';
 import { loadState, saveState, writeBackup } from './_state.mjs';
 
@@ -78,20 +80,21 @@ export default {
     const year = tabYear(tab);
 
     // ── scope ─────────────────────────────────────────────────────────
+    // Every run reconciles the whole union and decides by COMPARING VALUES, not
+    // by consulting data/status-log.tsv. That journal has exactly one writer
+    // (set-status.mjs); the Go dashboard, merge-tracker.mjs, normalize-statuses
+    // and hand edits all change a status without appending to it. Gating on it
+    // let the sheet go stale with the sync reporting success — see
+    // plans/08-31-26_google-sheets-sync.md §7.
+    //
+    // The cursor is still tracked so the journal stays meaningful to its other
+    // readers, but it no longer decides whether to run.
     const journalPath = path.join(ROOT, 'data', 'status-log.tsv');
     const journal = existsSync(journalPath) ? readFileSync(journalPath, 'utf8') : '';
     const state = loadState();
-    const forceFull = String(ctx?.env?.SHEETS_SYNC_MODE ?? '').toLowerCase() === 'full';
-    const full = forceFull || state === null;
-    const { nums: pending, cursor } = pendingFromJournal(journal, full ? 0 : state.statusLogCursor);
-
-    if (!full && pending.size === 0) {
-      log('nothing pending since the last sync.');
-      return { pushed: 0 };
-    }
-    log(full
-      ? `full sync${forceFull ? ' (SHEETS_SYNC_MODE=full)' : ' (no cursor yet)'} → ${tab}`
-      : `delta sync → ${tab}: ${pending.size} row(s) changed since the last run`);
+    const forceWrite = String(ctx?.env?.SHEETS_SYNC_MODE ?? '').toLowerCase() === 'full';
+    const { nums: pending, cursor } = pendingFromJournal(journal, state?.statusLogCursor ?? 0);
+    log(`reconciling → ${tab}${pending.size ? ` (${pending.size} logged transition(s) since the last run)` : ''}`);
 
     // ── read both sides ───────────────────────────────────────────────
     const sheet = await readTab(ctx, tab);
@@ -157,6 +160,20 @@ export default {
     }
 
     if (!plan.update) { log('nothing to write.'); return { pushed: 0 }; }
+
+    // The correctness gate: never write values the sheet already holds. Makes a
+    // re-run a true no-op regardless of what the cursor says, and keeps the
+    // sheet's revision history free of identical rewrites.
+    if (!plan.clear && planIsNoOp(currentSheetValues(sheet.rows), rows)) {
+      if (!forceWrite) {
+        log('sheet already matches the tracker — nothing to write.');
+        if (cursor !== (state?.statusLogCursor ?? 0)) {
+          saveState({ ...(state ?? {}), statusLogCursor: cursor, lastSyncedAt: new Date().toISOString(), tab });
+        }
+        return { pushed: 0 };
+      }
+      log('sheet already matches, but SHEETS_SYNC_MODE=full — rewriting anyway.');
+    }
 
     // ── backup, then write ────────────────────────────────────────────
     const backup = writeBackup(tab, {

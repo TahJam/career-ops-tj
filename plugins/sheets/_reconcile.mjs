@@ -165,3 +165,47 @@ export function pendingFromJournal(journal, cursor = 0) {
   }
   return { nums, cursor: lines.length };
 }
+
+/**
+ * The sheet's CURRENT A:H content, in the same shape buildDesiredRows emits.
+ *
+ * Column E needs reconstructing: a read returns the cell TEXT ("Link") with the
+ * URL in a separate output-only `hyperlink` field, while a write emits
+ * =HYPERLINK(url,"Link"). Comparing the raw cells would report a difference on
+ * every row forever.
+ *
+ * @param {Array<{cells: string[], link: string|null}>} sheetRows
+ * @returns {string[][]}
+ */
+export function currentSheetValues(sheetRows) {
+  return sheetRows.map((r) => {
+    const cells = [...r.cells];
+    cells[4] = r.link ? hyperlinkFormula(r.link) : (cells[4] || '');
+    return cells;
+  });
+}
+
+/**
+ * Does the sheet already match the plan?
+ *
+ * This is the sync's real correctness gate. An earlier design gated on
+ * data/status-log.tsv, but that journal has exactly ONE writer
+ * (set-status.mjs) — the Go dashboard, merge-tracker.mjs, normalize-statuses.mjs
+ * and hand edits all change a status without appending to it, so the sync
+ * silently no-opped while the sheet went stale. Comparing actual values instead
+ * of consulting a proxy is correct for every writer, present and future.
+ *
+ * Compare in ISO date space (buildDesiredRows output), NOT the US-formatted
+ * values handed to the API.
+ *
+ * @returns {boolean} true when a write would change nothing
+ */
+export function planIsNoOp(currentValues, plannedRows) {
+  if (currentValues.length !== plannedRows.length) return false;
+  for (let i = 0; i < plannedRows.length; i++) {
+    for (let c = 0; c < COLUMNS.length; c++) {
+      if ((currentValues[i]?.[c] ?? '') !== (plannedRows[i]?.[c] ?? '')) return false;
+    }
+  }
+  return true;
+}

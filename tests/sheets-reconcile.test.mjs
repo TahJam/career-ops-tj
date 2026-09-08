@@ -7,6 +7,7 @@
 
 import {
   joinKey, hyperlinkFormula, buildDesiredRows, planWrites, pendingFromJournal, SYNCED_STATES,
+  currentSheetValues, planIsNoOp,
 } from '../plugins/sheets/_reconcile.mjs';
 import { pass, fail } from './helpers.mjs';
 
@@ -134,4 +135,43 @@ console.log('\nsheets reconciler — journal cursor');
   const partial = pendingFromJournal(journal, 2);
   ok('a partial cursor yields only the new lines', partial.nums.size === 1 && partial.nums.has(82));
   ok('an empty journal is safe', pendingFromJournal('', 0).cursor === 0);
+}
+
+console.log('\nsheets reconciler — the write gate is value-based, not journal-based');
+{
+  // Regression: the sync used to decide whether to run by reading
+  // data/status-log.tsv, which only set-status.mjs writes. A status changed via
+  // the Go dashboard (or merge-tracker, or by hand) left the journal untouched,
+  // so the sync reported success while the sheet stayed stale.
+  const rows = [
+    sheetRow(2, 'NVIDIA', 'Senior Applied AI Engineer', '2026-08-03', 'cv-nvidia', 'https://x.test/n', 'Submitted - Waiting'),
+  ];
+  const current = currentSheetValues(rows);
+
+  ok('a read-back row round-trips to its own planned form (E rebuilt as HYPERLINK)',
+    current[0][4] === '=HYPERLINK("https://x.test/n","Link")');
+
+  const unchanged = buildDesiredRows({
+    sheetRows: rows, trackerRows: [], facts: noFacts, statusMap: STATUS_MAP, locationDefault: LOC, year: 2026,
+  });
+  ok('an untouched sheet is a no-op', planIsNoOp(current, unchanged.rows) === true);
+
+  // The dashboard case: tracker moved to Interview, journal never appended.
+  const drifted = buildDesiredRows({
+    sheetRows: rows,
+    trackerRows: [{ num: 93, company: 'NVIDIA', role: 'Senior Applied AI Engineer', date: '2026-08-03', status: 'Interview' }],
+    facts: noFacts, statusMap: STATUS_MAP, locationDefault: LOC, year: 2026,
+  });
+  ok('a status changed with NO journal entry is still detected',
+    drifted.stats.updated === 1 && planIsNoOp(current, drifted.rows) === false);
+  ok('and the drifted plan carries the mapped value', drifted.rows[0][7] === 'Interviewing');
+
+  const added = buildDesiredRows({
+    sheetRows: rows,
+    trackerRows: [{ num: 99, company: 'Acme', role: 'Eng', date: '2026-09-01', status: 'Applied' }],
+    facts: noFacts, statusMap: STATUS_MAP, locationDefault: LOC, year: 2026,
+  });
+  ok('a new row makes the plan differ by length', planIsNoOp(current, added.rows) === false);
+
+  ok('an empty sheet vs an empty plan is a no-op', planIsNoOp([], []) === true);
 }
