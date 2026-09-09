@@ -55,6 +55,16 @@ for (const { file, format, after, hasCertifications } of TEMPLATES) {
   check(`${name}: populated payload leaves the template unchanged`,
     stripEmptySections(template, FULL, format) === template, true);
 
+  // Stripping a section must never take the document's closing tags with it.
+  // When the last section is optional the boundary lookahead falls through to
+  // end-of-input and swallows `</div></body></html>`; a trailing `<!-- END -->`
+  // marker is what stops it. Browsers auto-close, so the PDF still renders —
+  // this assertion is the only thing that would notice.
+  if (format === 'html') {
+    check(`${name}: an empty payload leaves the document closed`,
+      /<\/body>\s*<\/html>\s*$/.test(stripped), true);
+  }
+
   // One empty, one populated: only the empty one goes.
   const onlyEdu = stripEmptySections(template, { projects: [{ name: 'P' }], education: [], certifications: [{ title: 'C' }] }, format);
   check(`${name}: empty education alone keeps projects`, onlyEdu.includes(projectsMarker), true);

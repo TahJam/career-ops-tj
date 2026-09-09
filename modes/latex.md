@@ -129,7 +129,7 @@ Write a JSON file with this structure. `build-cv-latex.mjs` handles template mer
 ## ATS Rules (same as pdf mode)
 
 - Single-column layout (enforced by template)
-- Standard section headers: Education, Work Experience, Personal Projects, Technical Skills
+- Standard section headers: Education, Experience, Projects, Technical Skills
 - UTF-8, machine-readable via `\pdfgentounicode=1`
 - Keywords distributed: first bullet of each role, skills section
 - No images, no graphics, no color in body text
@@ -148,6 +148,10 @@ Same ethical rules as `modes/pdf.md`:
 The generated `.tex` file uses only standard CTAN packages (no custom or bundled dependencies):
 
 - `latexsym`, `fullpage`, `titlesec`, `marvosym`, `color`, `verbatim`, `enumitem`
-- `hyperref`, `fancyhdr`, `babel`, `tabularx`, `fontawesome5`, `multicol`, `glyphtounicode`
+- `hyperref`, `fancyhdr`, `babel`, `tabularx`, `glyphtounicode`
+
+The template is [Jake's Resume](https://github.com/jakegut/resume) (MIT). The contact line
+is plain pipe-separated underlined links — no icon package is loaded, so there is nothing
+to install for `fontawesome`/`fontawesome5`.
 
 Upload the `.tex` file directly to Overleaf — compiles with no extra configuration.

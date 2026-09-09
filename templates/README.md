@@ -22,7 +22,7 @@ System-layer template files used by career-ops scripts and modes. These files ar
 
 The HTML template rendered by Playwright into PDF. Uses placeholder tokens (`{{NAME}}`, `{{SUMMARY_TEXT}}`, `{{EXPERIENCE}}`, etc.) that the PDF pipeline fills at generation time.
 
-**Design:** Space Grotesk headings + DM Sans body, single-column ATS-safe layout, self-hosted fonts from `fonts/`.
+**Design:** [Jake's Resume](https://github.com/jakegut/resume) (MIT) rendered in HTML — small-caps name and section headings, monochrome, single-column ATS-safe layout on a system serif stack (no webfonts, so PDF text extraction stays clean).
 
 **Customization:** Edit this file to change colors, spacing, or section order. The placeholder tokens are documented in `batch/batch-prompt.md` under "Template placeholders."
 
@@ -40,9 +40,9 @@ Otherwise uses the same placeholder tokens (`{{NAME}}`, `{{SUMMARY_TEXT}}`, etc.
 
 ### cv-template.tex
 
-LaTeX template for Overleaf-compatible CV generation. Based on the [sb2nov/resume](https://github.com/sb2nov/resume) format. Uses placeholder tokens (`{{NAME}}`, `{{EXPERIENCE}}`, `{{PROJECTS}}`, etc.) that the LaTeX pipeline fills at generation time.
+LaTeX template for Overleaf-compatible CV generation. Based on [Jake's Resume](https://github.com/jakegut/resume) (MIT), itself a fork of [sb2nov/resume](https://github.com/sb2nov/resume). Uses placeholder tokens (`{{NAME}}`, `{{EXPERIENCE}}`, `{{PROJECTS}}`, etc.) that the LaTeX pipeline fills at generation time.
 
-**Design:** Single-column ATS-safe layout using standard CTAN packages (`fontawesome5`, `enumitem`, `hyperref`, `titlesec`). No custom fonts or external dependencies — uploads directly to Overleaf.
+**Design:** Single-column ATS-safe layout using standard CTAN packages (`enumitem`, `hyperref`, `titlesec`, `tabularx`). No custom fonts or external dependencies — uploads directly to Overleaf.
 
 **Usage:**
 ```bash

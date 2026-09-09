@@ -57,7 +57,7 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 ## ATS Rules (clean parsing)
 
 - Single-column layout (no sidebars, no parallel columns)
-- Standard headers: "Professional Summary", "Work Experience", "Education", "Skills", "Certifications", "Projects"
+- Standard headers: "Summary", "Technical Skills", "Experience", "Projects", "Education", "Certifications"
 - No text in images/SVGs
 - No critical info in PDF headers/footers (ATS ignores them)
 - UTF-8, selectable text (not rasterized)
@@ -74,24 +74,25 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 
 ## PDF Design
 
-Minimal single-accent style (#2201), modeled on the candidate's own prior resume:
+[Jake's Resume](https://github.com/jakegut/resume) (MIT), rendered in HTML:
 
-- **Fonts**: system sans stack (Liberation Sans / Helvetica Neue / Arial) — clean ATS extraction, no ligature artifacts
-- **Header**: name centered, 28px bold, optional role-title line beneath it (`candidate.title`, e.g. "Software Engineer | Machine Learning | Data Scientist" — omit for no line), a solid 1.5px accent rule, then a centered contact row
-- **Accent**: one navy tone (`hsl(212, 60%, 38%)`, the `--accent-color` CSS variable) used for the header rule, section-title underlines, and company/institution names — no second color, no gradient
-- **Section headers**: 12px, uppercase, black text with a solid 2px accent-color underline (not a colored fill)
-- **Body**: 11px, line-height 1.5
-- **Work Experience entries**: one bold line combining role and company — `{{ROLE}} — {{COMPANY}}` — not stacked on two lines; dates/location right-aligned
+- **Fonts**: system serif stack (Latin Modern Roman / Liberation Serif / Times New Roman) — matches Jake's Computer Modern, clean ATS extraction, no ligature artifacts
+- **Header**: name centered, 26px bold small-caps, optional role-title line beneath it (`candidate.title`, e.g. "Software Engineer | Machine Learning | Data Scientist" — omit for no line), then a centered contact row of pipe-separated underlined links. No accent rule.
+- **Accent**: none — the CV is black on white. The `--accent-color` CSS variable still exists (set to `#000000`) so a profile `style:` block can reintroduce color in one place.
+- **Section headers**: 14px small-caps with a full-width 1px rule beneath
+- **Body**: 11px, line-height 1.4
+- **Experience entries**: two rows — bold company opposite the dates, then the italic role opposite the location — followed by the bullets
+- **Projects**: bold name, a pipe, then the italic tech stack inline
 - **No colored pill/badge backgrounds** anywhere (competencies, project badges) — plain text only
 - **Margins**: 0.6in
 - **Background**: pure white
 
 ## Section order (optimized "6-second recruiter scan")
 
-1. Header (centered name, optional role-title line, accent rule, contact row)
-2. Professional Summary (3-4 lines, keyword-dense)
-3. Skills (languages + technical, categorized plain-text list — this also carries the JD-matched keyword phrases that used to live in a separate Core Competencies section; see Step 13)
-4. Work Experience (reverse chronological)
+1. Header (centered small-caps name, optional role-title line, contact row)
+2. Summary (3-4 lines, keyword-dense)
+3. Technical Skills (languages + technical, categorized plain-text list — this also carries the JD-matched keyword phrases that used to live in a separate Core Competencies section; see Step 13)
+4. Experience (reverse chronological)
 5. Projects (top 3-4 most relevant)
 6. Education & Certifications
 
@@ -144,12 +145,12 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
     "photo_style": "rounded"
   },
   "sections": {
-    "summary": "Professional Summary",
-    "experience": "Work Experience",
+    "summary": "Summary",
+    "experience": "Experience",
     "projects": "Projects",
     "education": "Education",
     "certifications": "Certifications",
-    "skills": "Skills"
+    "skills": "Technical Skills"
   },
   "summary": "Personalized summary with JD keywords injected (honest vs cv.md).",
   "experience": [

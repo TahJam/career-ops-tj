@@ -130,7 +130,10 @@ async function main() {
 
   const substitutions = {
     NAME: escapeLatex(payload.name || ''),
-    CONTACT_LINE: escapeLatex(payload.contact_line || ''),
+    // The header puts contact_line inline ahead of a "$|$"-joined link row, so
+    // the separator ships with the value: an absent contact_line must leave no
+    // dangling divider before the email link.
+    CONTACT_LINE: payload.contact_line ? `${escapeLatex(payload.contact_line)} $|$` : '',
     EMAIL_URL: emailUrl,
     EMAIL_DISPLAY: escapeLatex(emailDisplay),
     LINKEDIN_URL: linkedinUrl,

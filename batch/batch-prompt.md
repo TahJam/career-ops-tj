@@ -430,8 +430,8 @@ ATS rules:
 
 Design rules:
 
-- Space Grotesk for headings, DM Sans for body.
-- Self-hosted fonts from `fonts/`.
+- System serif stack (Latin Modern Roman / Liberation Serif / Times New Roman) throughout -- Jake's Resume look, and no webfonts to break PDF text extraction.
+- Black on white, no accent color.
 - White background, 0.6in margins.
 - Keep the output readable and ATS-safe.
 

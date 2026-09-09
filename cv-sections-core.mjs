@@ -22,7 +22,13 @@
 //     comment inside a section body, truncating the strip and leaving markup
 //     behind. Markers are therefore matched as all-caps only.
 //   - Omitting the end-of-input branch would silently keep a section that
-//     happens to be last in the template.
+//     happens to be last in the template. That branch is a fallback, not a
+//     licence to run off the end: it strips the closing `</div></body></html>`
+//     along with the section, leaving malformed HTML. A template whose final
+//     section is optional therefore ends with a bare `<!-- END -->` marker, so
+//     the boundary lookahead always has something to stop at (cv-template.html,
+//     whose last section is Certifications). Browsers auto-close the tags, so
+//     nothing looks wrong in the PDF — which is exactly why the marker matters.
 //   - Naming the expected successor ("projects is followed by education")
 //     couples the two strips to each other and to template ordering: once an
 //     empty education block is removed, a named lookahead for it stops matching
@@ -50,9 +56,16 @@ const PATTERNS = {
 
 export const OPTIONAL_SECTIONS = ['projects', 'education', 'certifications'];
 
+// A section counts as empty when it renders nothing. Every buildX() in the two
+// builders starts with `entries.filter(Boolean)`, so an array of only falsy
+// entries — `[null]`, `[""]`, a trailing comma in a hand-authored payload —
+// renders exactly as `[]` does. Checking only `length` there would leave the
+// header standing over an empty body, which is the bare-header bug this module
+// exists to prevent.
 export function isEmptySection(payload, section) {
   const entries = payload?.[section];
-  return !Array.isArray(entries) || entries.length === 0;
+  if (!Array.isArray(entries)) return true;
+  return entries.filter(Boolean).length === 0;
 }
 
 // Remove every optional section that has no entries in `payload`. Returns the

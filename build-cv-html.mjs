@@ -48,14 +48,17 @@ const PHOTO_MIME_BY_EXT = new Map([
 const PHOTO_STYLES = new Set(['rounded', 'circle', 'square']);
 const IMAGE_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 
+// Jake's Resume section vocabulary. generate-pdf.mjs's SECTION_ALIASES already
+// folds "summary" / "experience" / "projects" / "technical skills" onto the same
+// keys as the longer titles, so the section-order guard is unaffected.
 const DEFAULT_SECTION_TITLES = {
-  summary: 'Professional Summary',
+  summary: 'Summary',
   competencies: 'Core Competencies',
-  experience: 'Work Experience',
+  experience: 'Experience',
   projects: 'Projects',
   education: 'Education',
   certifications: 'Certifications',
-  skills: 'Skills',
+  skills: 'Technical Skills',
 };
 
 // Escape user text for HTML text/attribute context. Covers the five characters
@@ -319,14 +322,16 @@ function buildExperience(entries, partial) {
         ? e.bullets.filter(Boolean).map(b => `        <li>${escapeHtml(b)}</li>`).join('\n')
         : '';
       const location = e.location
-        ? `\n    <div class="job-location">${escapeHtml(e.location)}</div>`
+        ? `\n      <span class="job-location">${escapeHtml(e.location)}</span>`
         : '';
       return `<div class="job">
     <div class="job-header">
       <span class="job-company">${escapeHtml(e.company)}</span>
       <span class="job-period">${escapeHtml(e.dates || e.period || '')}</span>
     </div>
-    <div class="job-role">${escapeHtml(e.role)}</div>${location}
+    <div class="job-subheader">
+      <span class="job-role">${escapeHtml(e.role)}</span>${location}
+    </div>
     <ul>
 ${bullets}
     </ul>
@@ -828,10 +833,12 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Guard that partials-based rendering produces the correct field values,
-  // combined onto one .job-title line (#2201: "Role — Company").
-  if (!html.includes('class="job-title"') || !html.includes('Test Engineer — Test Corp')) {
-    console.error('Self-test failed: experience entry fields not found in combined .job-title line');
+  // Guard that partials-based rendering produces the correct field values across
+  // the two rows of a Jake's Resume experience entry (company/dates, then
+  // role/location).
+  const jobRows = ['class="job-company"', '>Test Corp<', 'class="job-role"', '>Test Engineer<'];
+  if (jobRows.some(needle => !html.includes(needle))) {
+    console.error('Self-test failed: experience entry fields not found across the .job-company / .job-role rows');
     process.exit(1);
   }
 
