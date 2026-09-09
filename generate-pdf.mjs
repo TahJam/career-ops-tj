@@ -262,6 +262,55 @@ export function validateCvSectionOrder(html, cvMarkdown, { allowReorder = false 
 }
 
 /**
+ * Reject a CV that renders a section heading with nothing under it.
+ *
+ * build-cv-html.mjs already drops empty optional sections before filling the
+ * template (cv-sections-core.mjs), so a bare header can only reach here when
+ * the HTML skipped that builder — i.e. an agent hand-wrote the markup, which
+ * modes/pdf.md forbids precisely because the deterministic path owns this. The
+ * check lives in the PDF renderer because every CV passes through it no matter
+ * how the HTML was authored, so it is the one place the rule can be enforced
+ * rather than merely restated.
+ *
+ * @param {string} html
+ * @returns {void}
+ */
+export function validateNoEmptySections(html) {
+  // Split on section titles: whatever follows one, up to the next title or the
+  // end of the document, is that section's body. A body with no text and no
+  // content-bearing element (image, list item, horizontal rule) is bare.
+  //
+  // Both the opening pattern and the lookahead must anchor on the "<" of the
+  // title tag, not on its class attribute. Cutting at the attribute ends the
+  // body mid-tag and leaves a "<div " fragment behind, which survives tag
+  // stripping and reads as text — so a bare section directly followed by
+  // another one would look populated and go unreported.
+  const TITLE_TAG = String.raw`<[^>]*class=["'][^"']*\bsection-title\b[^"']*["'][^>]*>`;
+  const parts = [...html.matchAll(
+    new RegExp(`${TITLE_TAG}([\\s\\S]*?)</[^>]+>([\\s\\S]*?)(?=${TITLE_TAG}|$)`, 'gi')
+  )];
+
+  const bare = [];
+  for (const [, rawTitle, body] of parts) {
+    const title = normalizeSectionTitle(rawTitle);
+    if (!title) continue;
+    const text = body.replace(/<[^>]*>/g, '').replace(/&[a-z]+;|&#\d+;/gi, ' ').trim();
+    if (text) continue;
+    if (/<(img|li|hr)\b/i.test(body)) continue;
+    bare.push(title);
+  }
+
+  if (bare.length > 0) {
+    throw new Error(
+      `CV renders ${bare.length === 1 ? 'a section heading' : 'section headings'} with no content: ` +
+      `${bare.join(', ')}. Sections with no entries must be dropped, not left as a bare header — ` +
+      'build the HTML with `node build-cv-html.mjs <payload.json> <output.html>` (see modes/pdf.md), ' +
+      'which removes them, instead of writing the markup by hand.'
+    );
+  }
+}
+
+/**
  * Decide whether a rendered CV fits its configured page budget.
  *
  * This is deliberately separate from rendering: page count comes from the
@@ -544,6 +593,7 @@ async function generatePDF() {
     if (err?.code !== 'ENOENT') throw err;
   }
   validateCvSectionOrder(html, cvMarkdown, { allowReorder });
+  validateNoEmptySections(html);
 
   // Normalize text for ATS compatibility (issue #1)
   const normalized = normalizeTextForATS(html);

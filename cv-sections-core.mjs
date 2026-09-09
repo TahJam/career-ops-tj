@@ -50,9 +50,16 @@ const PATTERNS = {
 
 export const OPTIONAL_SECTIONS = ['projects', 'education', 'certifications'];
 
+// A section counts as empty when it renders nothing. Every buildX() in the two
+// builders starts with `entries.filter(Boolean)`, so an array of only falsy
+// entries — `[null]`, `[""]`, a trailing comma in a hand-authored payload —
+// renders exactly as `[]` does. Checking only `length` there would leave the
+// header standing over an empty body, which is the bare-header bug this module
+// exists to prevent.
 export function isEmptySection(payload, section) {
   const entries = payload?.[section];
-  return !Array.isArray(entries) || entries.length === 0;
+  if (!Array.isArray(entries)) return true;
+  return entries.filter(Boolean).length === 0;
 }
 
 // Remove every optional section that has no entries in `payload`. Returns the
