@@ -17,6 +17,8 @@
     "normalize": "node normalize-statuses.mjs",
     "dedup": "node dedup-tracker.mjs",
     "merge": "node merge-tracker.mjs",
+    "sheets:sync": "node plugins.mjs run sheets export",
+    "sheets:sync:dry": "node plugins.mjs run sheets export --dry-run",
     "reconcile": "node reconcile-pipeline.mjs",
     "pdf": "node generate-pdf.mjs",
     "jd:similarity": "node jd-similarity.mjs",

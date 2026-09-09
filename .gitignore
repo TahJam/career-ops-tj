@@ -128,6 +128,11 @@ process/scripts/
 
 # any auth files
 auth/
+*.cert
+certs/
 *.pem
 *.key
-*.cert
+# sheets plugin: cursor + pre-write sheet backups (user layer, never committed)
+data/sheets-sync-state.json
+data/sheet-backups/
+

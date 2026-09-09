@@ -539,3 +539,95 @@ func TestUpdateApplicationStatusRefusesUnrecognizableCell(t *testing.T) {
 		t.Errorf("file was modified despite refusal, now:\n%s", string(out))
 	}
 }
+
+// The dashboard used to be a silent tracker writer: it changed a status without
+// appending to status-log.tsv, the ledger set-status.mjs maintains. Every
+// consumer of that ledger — funnel-velocity.mjs applied-dates,
+// company-history.mjs, and the sheets sync — was blind to a status changed from
+// the UI, and the sheets sync in particular reported success while the mirrored
+// spreadsheet went stale.
+func TestUpdateApplicationStatusAppendsToStatusLog(t *testing.T) {
+	tempDir := t.TempDir()
+	dataDir := filepath.Join(tempDir, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+
+	applications := `# Applications Tracker
+
+| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
+|---|------|---------|------|-------|--------|-----|--------|-------|
+| 93 | 2026-08-03 | NVIDIA | Senior Applied AI Engineer | 4.2/5 | Applied | ✅ | [93](reports/093.md) | note |
+`
+	trackerPath := filepath.Join(dataDir, "applications.md")
+	if err := os.WriteFile(trackerPath, []byte(applications), 0o644); err != nil {
+		t.Fatalf("failed to write tracker: %v", err)
+	}
+	logPath := filepath.Join(dataDir, "status-log.tsv")
+
+	apps := ParseApplications(tempDir)
+	if len(apps) != 1 {
+		t.Fatalf("expected 1 parsed application, got %d", len(apps))
+	}
+	if err := UpdateApplicationStatus(tempDir, apps[0], "Interview"); err != nil {
+		t.Fatalf("UpdateApplicationStatus: %v", err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("status-log.tsv was not created: %v", err)
+	}
+	line := strings.TrimSuffix(string(raw), "\n")
+	fields := strings.Split(line, "\t")
+	// {report}\t{date}\t{old}\t{new}\t{source}\t — six fields, last empty.
+	if len(fields) != 6 {
+		t.Fatalf("expected 6 tab-separated fields, got %d: %q", len(fields), line)
+	}
+	if fields[0] != "93" {
+		t.Errorf("report = %q, want \"93\"", fields[0])
+	}
+	if fields[1] != time.Now().Format("2006-01-02") {
+		t.Errorf("date = %q, want today", fields[1])
+	}
+	if fields[2] != "Applied" || fields[3] != "Interview" {
+		t.Errorf("transition = %q -> %q, want \"Applied\" -> \"Interview\"", fields[2], fields[3])
+	}
+	if fields[4] != "dashboard" {
+		t.Errorf("source = %q, want \"dashboard\"", fields[4])
+	}
+	if fields[5] != "" {
+		t.Errorf("trailing field = %q, want empty", fields[5])
+	}
+
+	// A second, different transition appends rather than truncating.
+	reparsed := ParseApplications(tempDir)
+	if err := UpdateApplicationStatus(tempDir, reparsed[0], "Rejected"); err != nil {
+		t.Fatalf("second UpdateApplicationStatus: %v", err)
+	}
+	raw, err = os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read status-log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 ledger lines after a second transition, got %d: %q", len(lines), string(raw))
+	}
+	if !strings.Contains(lines[1], "\tInterview\tRejected\tdashboard\t") {
+		t.Errorf("second line did not record Interview -> Rejected: %q", lines[1])
+	}
+
+	// A no-op re-selection must not accumulate phantom entries: applied-date
+	// resolution reads the FIRST transition into a state, so duplicates would
+	// corrupt it.
+	reparsed = ParseApplications(tempDir)
+	if err := UpdateApplicationStatus(tempDir, reparsed[0], "Rejected"); err != nil {
+		t.Fatalf("no-op UpdateApplicationStatus: %v", err)
+	}
+	raw, err = os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read status-log: %v", err)
+	}
+	if got := len(strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")); got != 2 {
+		t.Errorf("no-op transition appended a ledger line: %d lines, want 2", got)
+	}
+}
