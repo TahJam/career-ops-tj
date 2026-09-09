@@ -36,12 +36,12 @@ Copy from `templates/portals.example.yml` and customize:
 
 ## CV Template (templates/cv-template.html)
 
-The HTML template uses these design tokens:
-- **Fonts**: Space Grotesk (headings) + DM Sans (body) -- self-hosted in `fonts/`
-- **Colors**: Cyan primary (`hsl(187,74%,32%)`) + Purple accent (`hsl(270,70%,45%)`)
+The template is [Jake's Resume](https://github.com/jakegut/resume) (MIT) rendered in HTML. It uses these design tokens:
+- **Fonts**: system serif stack (Latin Modern Roman / Liberation Serif / Times New Roman) -- no webfonts, so PDF text extraction stays clean for ATS
+- **Colors**: none -- black on white. `--accent-color` exists and is set to `#000000`, so one override reintroduces color everywhere it would appear.
 - **Layout**: Single-column, ATS-optimized
 
-To customize fonts/colors, edit the CSS in the template. Update font files in `fonts/` if switching fonts.
+To customize fonts/colors, override the `:root` tokens from `config/profile.yml`'s `style:` block, or edit the CSS in the template directly.
 
 ## Negotiation Scripts (modes/_shared.md)
 
