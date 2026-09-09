@@ -499,6 +499,29 @@ process_offer() {
   local jd_file
   jd_file="$(mktemp "${TMPDIR:-/tmp}/batch-jd-${id}.XXXXXX")"
 
+  # Populate the JD file before spawning the worker. In standalone (Mode B)
+  # there is no conductor to fill it, and modern boards (Ashby, Workable,
+  # Greenhouse) render the JD client-side, so a worker's WebFetch fallback
+  # sees only the page shell. browser-extract.mjs renders the page headlessly
+  # and writes the distilled JD text. On failure the file stays empty and the
+  # worker's own fallback + "never fabricate" rule still applies.
+  if node "$PROJECT_DIR/browser-extract.mjs" "$url" --mode jd > "${jd_file}.json" 2>/dev/null; then
+    node -e '
+      const fs = require("fs");
+      try {
+        const d = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const body = [d.title || "", d.text || ""].join("\n\n").trim();
+        if (body) fs.writeFileSync(process.argv[2], body);
+      } catch (_) { /* leave the JD file empty */ }
+    ' "${jd_file}.json" "$jd_file" 2>/dev/null || true
+  fi
+  rm -f "${jd_file}.json"
+  if [[ -s "$jd_file" ]]; then
+    echo "    JD extracted ($(wc -c < "$jd_file" | tr -d ' ') bytes) for #$id"
+  else
+    echo "    WARN: JD extraction returned nothing for #$id — worker will fall back"
+  fi
+
   echo "--- Processing offer #$id: $url (report $report_num, attempt $((retries + 1)))"
 
   # Build the prompt with placeholders replaced

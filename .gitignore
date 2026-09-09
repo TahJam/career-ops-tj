@@ -126,11 +126,13 @@ process/scripts/
 # patterns above (cv.md, portals.yml).
 !test-fixtures/**
 
-# any auth files or cert files
+# any auth files
 auth/
+*.cert
 certs/
 *.pem
 *.key
 # sheets plugin: cursor + pre-write sheet backups (user layer, never committed)
 data/sheets-sync-state.json
 data/sheet-backups/
+
