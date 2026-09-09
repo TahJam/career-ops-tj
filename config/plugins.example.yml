@@ -33,3 +33,31 @@ plugins:
     enabled: false
     # label: "Job Leads"     # the Gmail label to scan
     # days_back: 7           # how far back to look
+
+  # ── sheets (export) ── mirror your tracker into a Google Sheet you own.
+  # Needs GOOGLE_SHEET_ID + GOOGLE_AUTH_PATH in .env, pointing at a service-account
+  # JSON key. Share the spreadsheet with that key's client_email as an EDITOR.
+  # Run via `node plugins.mjs run sheets export [--dry-run]`.
+  #
+  # Every run reconciles the whole tab and decides by COMPARING VALUES against
+  # the sheet, so a status changed by set-status.mjs, the dashboard,
+  # merge-tracker.mjs or a hand edit is all picked up alike. When the sheet
+  # already matches, it reads and writes nothing. SHEETS_SYNC_MODE=full rewrites
+  # anyway; GOOGLE_SYNC=false is honoured as a kill-switch.
+  sheets:
+    enabled: false
+    # Only this tab is ever written. Rows dated outside its year are skipped.
+    tab: "Apply 2026"
+    # Column F. The sheet's COUNTIF(F:F,"* TX") formulas depend on this format.
+    location_default: "Austin, TX"
+    # Guard: refuse a run that would write more rows than this.
+    max_rows_per_run: 50
+    # career-ops canonical state -> your sheet's Response dropdown value.
+    # Evaluated / SKIP / Discarded are intentionally absent: they never sync.
+    status_map:
+      Applied: "Submitted - Waiting"
+      Responded: "Submitted - Waiting"
+      Interview: "Interviewing"
+      Offer: "Offer Received"
+      Hired: "Offer Accepted"
+      Rejected: "Rejected"

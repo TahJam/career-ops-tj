@@ -744,7 +744,59 @@ func UpdateApplicationStatusAndNotes(careerOpsPath string, app model.CareerAppli
 		return fmt.Errorf("application not found: report %s", app.ReportNumber)
 	}
 
-	return writeFileAtomic(filePath, []byte(strings.Join(lines, "\n")))
+	if err := writeFileAtomic(filePath, []byte(strings.Join(lines, "\n"))); err != nil {
+		return err
+	}
+
+	// Record the transition in the ledger, inside the lock, exactly as
+	// set-status.mjs does. Until this existed the dashboard was a silent writer:
+	// it changed a status without journaling it, so every status-log consumer
+	// (funnel-velocity.mjs applied-dates, company-history.mjs, the sheets sync)
+	// was blind to any status changed from the UI.
+	//
+	// Best-effort by design — the tracker write above already succeeded, so a
+	// failed append is a warning, never an error. Same posture as set-status.mjs.
+	if err := appendStatusLog(filePath, app.ReportNumber, app.Status, newStatus, time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: status-log append failed (status change itself succeeded): %v\n", err)
+	}
+	return nil
+}
+
+// appendStatusLog appends one transition to status-log.tsv, the append-only
+// ledger that sits beside the tracker.
+//
+// Line format is set by set-status.mjs and read by funnel-velocity.mjs,
+// company-history.mjs and plugins/sheets — six tab-separated fields with a
+// trailing empty one:
+//
+//	{report}\t{YYYY-MM-DD}\t{oldStatus}\t{newStatus}\t{source}\t\n
+//
+// A no-op transition is not recorded: re-selecting the status a row already has
+// must not accumulate phantom ledger entries, which would corrupt the
+// applied-date resolution that reads the FIRST transition into a state.
+func appendStatusLog(trackerPath, reportNumber, oldStatus, newStatus string, when time.Time) error {
+	if reportNumber == "" {
+		return nil
+	}
+	if NormalizeStatus(oldStatus) == NormalizeStatus(newStatus) {
+		return nil
+	}
+	logPath := filepath.Join(filepath.Dir(trackerPath), "status-log.tsv")
+	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	line := fmt.Sprintf("%s\t%s\t%s\t%s\tdashboard\t\n",
+		strings.TrimSpace(reportNumber),
+		when.Format("2006-01-02"),
+		strings.TrimSpace(oldStatus),
+		strings.TrimSpace(newStatus),
+	)
+	if _, err := file.WriteString(line); err != nil {
+		return err
+	}
+	return file.Sync()
 }
 
 // appendNotesInLine appends text to the Notes cell of a tracker row without

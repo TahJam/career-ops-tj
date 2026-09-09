@@ -496,6 +496,15 @@ const result = {
   // idempotent re-run of an already-Applied row must not invite a consumer
   // to seed a duplicate follow-up.
   ...(statusChanged && newStatus === 'Applied' ? { followupSeedCandidate: true } : {}),
+  // Sibling of the hook above, for the sheets plugin. Fires on ANY real status
+  // change (not just into Applied) because a mirror has to track the whole
+  // lifecycle. Like followupSeedCandidate it is reported on --dry-run too, so a
+  // preview says whether a sync would follow.
+  //
+  // Signal only: the sheet write happens after this process exits, never inside
+  // the tracker lock, where network latency would hold the lock and a network
+  // failure could fail the status write itself.
+  ...(statusChanged ? { sheetSyncCandidate: true } : {}),
   ...(statusChanged && !flags.dryRun ? { statusLogged } : {}),
   tracker: APPS_FILE,
 };

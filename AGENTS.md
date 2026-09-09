@@ -106,6 +106,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `jd-skill-gap.mjs` | Zero-LLM JD skill-gap checker — classifies a JD's required skills against `cv.md` into existing / supportedByResume / gap so a CV can be tailored honestly (JSON or `--summary` output); never auto-adds a claim to `cv.md` |
 | `contacts.mjs` | Job-search phonebook → vCard 3.0 exporter — stable UIDs so re-imports update instead of duplicating on platforms that honor vCard UID (JSON, `--summary`, `--vcf`, `--caller-id`) |
 | `outcome.mjs` | Record application outcome, archive artifacts, and sync tracker (`node outcome.mjs <selector> <type>`) |
+| `plugins/sheets/` | Google Sheets mirror (opt-in plugin) — reconciles `data/applications.md` into a Google Sheet you own. One argument-free command reconciles the whole tab, deciding by comparing values against the sheet — so a status changed via `set-status.mjs`, the dashboard, or by hand is all detected alike. `npm run sheets:sync:dry` previews, `npm run sheets:sync` writes. Never writes outside columns A:H, never inserts/deletes/sorts rows — see `plans/08-31-26_google-sheets-sync.md` |
 | `weekly-digest.mjs` | Rolls up `interview-prep/sessions/*.md` (default: current ISO week) into a per-company round summary, recurring competency-tag counts, and best-effort recurring 🔴 gaps from `question-bank.md` (JSON or `--summary`) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy) + Risk Summary, plus `## Machine Summary` YAML for downstream scripts. Header includes `**Legitimacy:** {tier}`. |
 
@@ -250,6 +251,7 @@ Default modes are in `modes/` (English). This fork removed the 16 non-English la
 | Asks about follow-ups or application cadence | `followup` |
 | Wants to classify application replies and review updates | `reply-watch` — classifies replies, matches to applications, suggests tracker updates |
 | Wants to record application outcome & archive artifacts | `outcome` |
+| Mirrors the tracker to their Google Sheet, or changed a status and wants the sheet updated | `sheets` — run `npm run sheets:sync` (plugin: `node plugins.mjs skill sheets` for the how-to). Preview first with `npm run sheets:sync:dry` |
 | Wants to update the system | `update` |
 | Wants to queue a request for later / check the inbox between sessions | `agent-inbox` — append-only checklist drained next session; nothing auto-submits |
 | Wants to add a finished project, paper, or role to the CV | `add` — source-grounded preview, confirm-before-write; dedup + insertion via `add-entry.mjs` |
