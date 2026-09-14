@@ -330,10 +330,12 @@ Report header:
 **URL:** {{URL}}
 **PDF:** {output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {company-slug} to create on demand`}
 **Batch ID:** {{ID}}
-
-
 ---
+```
 
+Then include the following:
+
+```markdown
 ## Machine Summary
 
 ```yaml
@@ -364,7 +366,6 @@ risk_summary:
   culture: "{pass | caution | fail | not_evaluated}"
   interview_redflags: "{none | caution | warning | not_evaluated}"
   ai_infra: "{consistent | mismatch | not_evaluated}"
-```
 ```
 
 Then include:
@@ -405,16 +406,17 @@ If score is greater than or equal to the threshold:
 8. Reorder experience bullets by relevance.
 9. Build a 6-8 item competency grid.
 10. Inject keywords ethically into existing achievements; never invent skills or metrics.
-11. Write HTML to `output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html`.
+11. Write HTML to `output/{candidate-name}-{company-slug}-{{REPORT_NUM}}.html`.
 12. Run:
 
 ```bash
 node generate-pdf.mjs \
-  output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html \
-  output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf \
+  output/{candidate-name}-{company-slug}-{{REPORT_NUM}}.html \
+  output/{candidate-name}-{company-slug}-{{REPORT_NUM}}.pdf \
   --format={letter|a4} \
   --report={{REPORT_NUM}}
 ```
+`{candidate-name}` is lowercase, hyphenated, and filesystem-safe.
 
 > **Never drop `{{REPORT_NUM}}` from either filename.** It is the only thing keeping two roles at the same company from overwriting each other's CV. Batches routinely evaluate several roles at one employer in parallel; with a company-slug-only name the last worker to finish silently destroys every earlier worker's tailored CV, and their reports keep pointing at a `**PDF:**` path that now holds someone else's document. The report number is unique per evaluation (allocated by `reserve-report-num.mjs`), so it makes the filename collision-proof and pairs it 1:1 with `reports/{{REPORT_NUM}}-{company-slug}-{{DATE}}.md`.
 
