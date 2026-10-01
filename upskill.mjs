@@ -25,7 +25,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { load as yamlLoad } from 'js-yaml';
+import { readMachineSummary } from './lib/report-summary.mjs';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
@@ -52,20 +52,8 @@ import { extractSkills } from './skill-extract.mjs';
 export { extractSkills };
 
 // --- Machine Summary + Gap table parsing ---
-// Mirrors analyze-patterns.mjs (duplicated by design, see header comment).
-function parseMachineSummary(content) {
-  const fenceMatch = content.match(/##\s*Machine Summary\s*\n+```(?:yaml|yml|json)?\s*\n([\s\S]*?)\n```/i);
-  if (!fenceMatch) return null;
-  const raw = fenceMatch[1].trim();
-  if (!raw) return null;
-  try {
-    const parsed = yamlLoad(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
+// The Machine Summary fence is read by lib/report-summary.mjs, shared with
+// every other report reader.
 
 function normalizeList(value) {
   if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
@@ -84,7 +72,7 @@ export function parseReportGaps(content) {
   let score = null;
   let hasMachineSummary = false;
 
-  const summary = parseMachineSummary(content);
+  const summary = readMachineSummary(content);
   if (summary) {
     hasMachineSummary = true;
     if (typeof summary.score === 'number' && Number.isFinite(summary.score)) score = summary.score;
