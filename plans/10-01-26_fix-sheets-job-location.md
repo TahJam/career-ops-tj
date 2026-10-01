@@ -427,3 +427,23 @@ Notes:
   - `test-all.mjs` "batch prompt CV filenames must carry {{REPORT_NUM}}" was already failing before
     this branch (from `f0e76ac`).
   - `config/plugins.yml` still carries an ignored `location_default` key.
+
+## PR #4 review round (2026-10-01)
+
+Eight review comments; seven fixed, one ([6]) needed no code change. All four commits keep
+`node test-all.mjs` and `go test ./...` green (apart from the pre-existing batch-prompt failure).
+
+| Commit | Comments | What changed |
+|---|---|---|
+| `6d44944` fix(lib): recover from a broken Machine Summary and tighten job_location | [1], [3], [4] | `parseMachineSummary()` reports `ok / partial / unparseable / none`, and when js-yaml rejects the fence it recovers top-level scalars line by line with the Go reader's rules. `job_location` rejects placeholders, `City ST` with no comma, and non-US `, ST` codes. `sheetLocation()` returns a value only when `checkJobLocation()` passes. |
+| `cc8c5af` fix(verify-pipeline): fail on a Machine Summary that does not parse | [2], [8] | A broken fence is an error, never treated as "no fence". Each report is parsed once and the result shared by Check 9 and Check 13. |
+| `170b4d7` fix(sheets): log why a row has no location, and document owned columns | [7], [6] | `reportFacts()` returns `locationReason`, and existing rows that keep their sheet value are logged too. `skill.md` / `plugins.example.yml` say career-ops owns columns F and H. |
+| `9f96f17` fix(dashboard): make the Go report reader a true twin of the JS one | [5], [4] | `''` and `\"` escapes, the `NULL` / `Null` spellings, and JSON fences match js-yaml. The location check is ported, and `applyReportLocation` uses the same rule as the sheet. The reader moves to `report_location.go`, with a single `usStates` list. |
+
+Notes:
+- **[3] correction:** checking the `, ST` suffix against US codes can't catch `Berlin, DE`, because DE is
+  Delaware. The fixture pins this as accepted; the schema writes non-US cities bare (`Berlin`).
+- **[6]:** the first sync's size was already checked before merge (37 rows, under `max_rows_per_run`).
+  Reverting hand edits is D1 as decided, now documented.
+- The stricter rules change nothing on the local data: all 198 reports parse `ok` and pass, and the
+  live dry-run still plans 0 updates.
