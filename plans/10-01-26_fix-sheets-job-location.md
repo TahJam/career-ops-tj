@@ -221,7 +221,7 @@ Go can't import the JS module. It already pulls YAML keys from reports with rege
 values first and falls back to the Notes heuristic only when the report lacks them (no report, or a report
 without a Machine Summary).
 
-**Drift guard:** `test/fixtures/report-location-cases.json` holds a set of report snippets with expected
+**Drift guard:** `tests/fixtures/report-location-cases.json` holds a set of report snippets with expected
 `{ workMode, location, sheetLocation }`. Both `dashboard/internal/data/derive_test.go` and the JS test suite
 run against the same file, so a rule change in one language that isn't made in the other fails CI.
 
@@ -254,7 +254,7 @@ schema stays in `batch/batch-prompt.md`; don't duplicate it here.
 ##### 3a. Module + fixture
 
 As described in Design, including a `validateJobLocation(summary)` helper for the D3 rule. Add
-`test/fixtures/report-location-cases.json`, and unit tests in `test-all.mjs` driven by it. The fixture
+`tests/fixtures/report-location-cases.json`, and unit tests in `tests/report-summary.test.mjs` (auto-discovered by `test-all.mjs`) driven by it. The fixture
 includes cases that break the rule (`onsite` + `null`).
 
 ##### 3b. Enforce the D3 rule — `verify-pipeline.mjs`
@@ -303,7 +303,7 @@ to say that column F is now the job's location, with a link to this plan.
   full content.
 - `derive.go` — `deriveNoteFields` keeps the Notes heuristic, but only for fields the report didn't
   supply. Map `remote|remote_flex|hybrid|onsite` → `Remote|RemoteFlex|Hybrid|Full`.
-- `derive_test.go` — table test driven by `test/fixtures/report-location-cases.json`.
+- `derive_test.go` — table test driven by `tests/fixtures/report-location-cases.json`.
 
 #### 6. Backfill — `backfill-job-location.mjs` (one-time, user-confirmed)
 
@@ -364,7 +364,7 @@ Conventions, taken from this repo's history (e.g. the `plugin-googlesheet` branc
 | 1 | `docs(plans): record decisions and commit order for the location fix` | — | this plan |
 | | **Phase A — location fix** | | |
 | 2 | `feat(batch-prompt): add work_mode and job_location to the Machine Summary` | 1, 2 | `batch/batch-prompt.md`, `modes/oferta.md` |
-| 3 | `feat(lib): add shared Machine Summary reader with job-location rules` | 3a | `lib/report-summary.mjs`, `test/fixtures/report-location-cases.json`, `test-all.mjs` |
+| 3 | `feat(lib): add shared Machine Summary reader with job-location rules` | 3a | `lib/report-summary.mjs`, `tests/fixtures/report-location-cases.json`, `tests/report-summary.test.mjs` |
 | 4 | `feat(verify-pipeline): flag hybrid/onsite reports missing job_location` | 3b | `verify-pipeline.mjs`, `test-all.mjs` |
 | 5 | `refactor(sheets): generalize overlap updates into owned columns` | 4a | `plugins/sheets/_reconcile.mjs`, tests |
 | 6 | `fix(sheets): write each job's location from its report` | 4b | `plugins/sheets/*`, `config/plugins.example.yml`, tests |

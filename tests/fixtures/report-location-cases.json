@@ -1,0 +1,125 @@
+{
+  "_comment": "Shared by tests/report-summary.test.mjs (lib/report-summary.mjs) and dashboard/internal/data/derive_test.go. Both readers must agree on workMode and location for every case; change a rule in one language and its twin fails.",
+  "cases": [
+    {
+      "name": "fully remote, no hub",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"remote\"\njob_location: null\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "remote",
+      "location": null,
+      "sheetLocation": "Remote",
+      "check": "ok"
+    },
+    {
+      "name": "remote_flex with a hub still reads Remote on the sheet",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"remote_flex\"\njob_location: \"Austin, TX\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "remote_flex",
+      "location": "Austin, TX",
+      "sheetLocation": "Remote",
+      "check": "ok"
+    },
+    {
+      "name": "onsite US city",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"Austin, TX\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin, TX",
+      "sheetLocation": "Austin, TX",
+      "check": "ok"
+    },
+    {
+      "name": "hybrid, single-quoted",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: 'hybrid'\njob_location: 'Santa Clara, CA'\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "hybrid",
+      "location": "Santa Clara, CA",
+      "sheetLocation": "Santa Clara, CA",
+      "check": "ok"
+    },
+    {
+      "name": "unquoted values, international city",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: onsite\njob_location: Berlin\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Berlin",
+      "sheetLocation": "Berlin",
+      "check": "ok"
+    },
+    {
+      "name": "trailing YAML comment is not part of the value",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"  # five days\njob_location: \"Austin, TX\"  # HQ\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin, TX",
+      "sheetLocation": "Austin, TX",
+      "check": "ok"
+    },
+    {
+      "name": "work_mode is case-insensitive",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"Remote\"\njob_location: null\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "remote",
+      "location": null,
+      "sheetLocation": "Remote",
+      "check": "ok"
+    },
+    {
+      "name": "onsite without a location breaks the schema rule",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: null\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": null,
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "hybrid with an empty location breaks the schema rule",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"hybrid\"\njob_location: \"\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "hybrid",
+      "location": null,
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a spelled-out state is not normalized",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"Austin, Texas\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin, Texas",
+      "sheetLocation": "Austin, Texas",
+      "check": "invalid"
+    },
+    {
+      "name": "an unknown work_mode reads as null",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"flexible\"\njob_location: null\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": null,
+      "location": null,
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a report written before the keys existed",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": null,
+      "location": null,
+      "sheetLocation": null,
+      "check": "missing"
+    },
+    {
+      "name": "keys outside the fence are ignored",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n\nwork_mode: \"remote\"\njob_location: \"Austin, TX\"\n",
+      "workMode": null,
+      "location": null,
+      "sheetLocation": null,
+      "check": "missing"
+    },
+    {
+      "name": "a duplicated key elsewhere in the fence does not hide the location",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\ntop_strengths:\n  - \"a\"\ntop_strengths:\n  - \"b\"\nwork_mode: \"onsite\"\njob_location: \"Austin, TX\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin, TX",
+      "sheetLocation": "Austin, TX",
+      "check": "ok"
+    },
+    {
+      "name": "no Machine Summary at all (gate-skip note)",
+      "report": "# Evaluation: Acme — Engineer\n\n## Skip note\n\nwork_mode: \"onsite\"\njob_location: \"Austin, TX\"\n",
+      "workMode": null,
+      "location": null,
+      "sheetLocation": null,
+      "check": "missing"
+    }
+  ]
+}
