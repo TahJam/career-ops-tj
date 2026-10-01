@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared by tests/report-summary.test.mjs (lib/report-summary.mjs) and dashboard/internal/data/derive_test.go. Both readers must agree on workMode and location for every case; change a rule in one language and its twin fails.",
+  "_comment": "Shared by tests/report-summary.test.mjs (lib/report-summary.mjs) and dashboard/internal/data/derive_test.go. Both readers must agree on workMode, location and check for every case, and both state lists must equal usStates; change a rule in one language and its twin fails.",
   "cases": [
     {
       "name": "fully remote, no hub",
@@ -74,11 +74,11 @@
       "check": "invalid"
     },
     {
-      "name": "a spelled-out state is not normalized",
+      "name": "a spelled-out state is invalid and never reaches the sheet",
       "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"Austin, Texas\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
       "workMode": "onsite",
       "location": "Austin, Texas",
-      "sheetLocation": "Austin, Texas",
+      "sheetLocation": null,
       "check": "invalid"
     },
     {
@@ -120,6 +120,131 @@
       "location": null,
       "sheetLocation": null,
       "check": "missing"
+    },
+    {
+      "name": "a placeholder is not a place",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"TBD\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "TBD",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "\"Multiple locations\" is not a place",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"hybrid\"\njob_location: \"Multiple locations\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "hybrid",
+      "location": "Multiple locations",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "\"Remote\" in job_location is a work mode, not a place",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"remote\"\njob_location: \"Remote\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "remote",
+      "location": "Remote",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a missing comma before the state code is invalid",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"Austin TX\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin TX",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a non-US region code is invalid",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"hybrid\"\njob_location: \"Toronto, ON\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "hybrid",
+      "location": "Toronto, ON",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a valid US code passes even on a foreign city (DE is Delaware); the schema writes non-US cities bare",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"Berlin, DE\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Berlin, DE",
+      "sheetLocation": "Berlin, DE",
+      "check": "ok"
+    },
+    {
+      "name": "punctuation real city names use is accepted",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"onsite\"\njob_location: \"St. Louis, MO\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "St. Louis, MO",
+      "sheetLocation": "St. Louis, MO",
+      "check": "ok"
+    },
+    {
+      "name": "an invalid work_mode with a city never reaches the sheet",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"on-site\"\njob_location: \"San Francisco, CA\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": null,
+      "location": "San Francisco, CA",
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a YAML error elsewhere in the fence does not hide the location",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nnotes: comp: base + equity\nwork_mode: \"onsite\"\njob_location: \"Austin, TX\"\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "Austin, TX",
+      "sheetLocation": "Austin, TX",
+      "check": "ok"
     }
+  ],
+  "usStates": [
+    "AK",
+    "AL",
+    "AR",
+    "AZ",
+    "CA",
+    "CO",
+    "CT",
+    "DC",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "IA",
+    "ID",
+    "IL",
+    "IN",
+    "KS",
+    "KY",
+    "LA",
+    "MA",
+    "MD",
+    "ME",
+    "MI",
+    "MN",
+    "MO",
+    "MS",
+    "MT",
+    "NC",
+    "ND",
+    "NE",
+    "NH",
+    "NJ",
+    "NM",
+    "NV",
+    "NY",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VA",
+    "VT",
+    "WA",
+    "WI",
+    "WV",
+    "WY"
   ]
 }
