@@ -290,6 +290,8 @@ discard_reasons:
 via: {agency/recruiter firm as a quoted string, or null for direct applications}
 company_confidential: {true when the end employer is unknown (company is "?"), else false}
 advertised_comp: {verbatim JD salary/range as a quoted string (e.g. "80-90k EUR"), or null when the JD states nothing}
+work_mode: "{remote | remote_flex | hybrid | onsite}"
+job_location: {"City, ST" for US roles or "City" outside the US, as a quoted string; null only when work_mode is remote or remote_flex and the JD names no hub}
 risk_summary:
   legitimacy: "{high_confidence | proceed_with_caution | suspicious}"
   classification: "{clear | flagged | not_evaluated}"
@@ -303,6 +305,10 @@ Rules:
 - `score` is numeric only, without `/5`.
 - `final_decision` must reflect the full evaluation, not only the CV match.
 - `advertised_comp` is the JD's **own** figure, verbatim; `null` when the JD states nothing — never estimate it and never substitute researched market data (Block D research stays in Block D). Batch workers never write `data/salary-observations.tsv` — the report itself is the advertised observation (`salary-gap.mjs` reads it).
+- `work_mode` and `job_location` are the machine-readable form of the Block A Remote row; the sheet sync, the dashboard and `verify-pipeline.mjs` read them through `lib/report-summary.mjs`, so they are the single source of truth for a job's location.
+  - `work_mode`: `remote` = no attendance expectation; `remote_flex` = remote by default with occasional site visits or travel, or remote-first with an optional office; `hybrid` = recurring in-office days; `onsite` = full-time in office. When the Geo-mismatch check fires, the JD body's binding requirement wins.
+  - `job_location` is normalized, not copied: US roles are `"City, ST"` with the two-letter state code ("Austin, Texas", "Austin on-site", "North Austin facility" → `"Austin, TX"`); roles outside the US are the city alone (`"Berlin"`). For a multi-location posting, use the listed location that matches the candidate's base in `config/profile.yml`, otherwise the first one listed.
+  - `job_location` may be `null` only when `work_mode` is `remote` or `remote_flex` and the JD names no hub. A `hybrid` or `onsite` role always carries a city; if the JD truly states none, say so in Block A, set `confidence: "Low"`, and ask rather than guess.
 - Do not invent missing data. If confidence is limited, set `confidence: "Low"` and explain the limitation in the human-readable sections.
 - `work_auth` reflects the Block A work-authorization tier: `no_sponsorship` only when the JD **explicitly** refuses sponsorship for a role outside the candidate's `authorized_in`; `unstated` when the JD is silent (neutral, not a blocker); `not_needed` when the role is within `authorized_in` or sponsorship isn't required; `sponsors` when the JD explicitly offers it.
 - `risk_summary` mirrors the `## Risk Summary` block row by row — same source verdicts, snake_cased: `legitimacy` from the Block G tier (`high_confidence` / `proceed_with_caution` / `suspicious`), `culture` from the Block A Culture screen (`pass` / `caution` / `fail`), `interview_redflags` from the red-flag file's warning level (`none` / `caution` / `warning`). Any row rendered `— not evaluated` (or `— no interview sessions yet`) is `not_evaluated` here. Never invent a value the block does not show.
@@ -360,6 +366,8 @@ discard_reasons:
 via: {agency/recruiter firm as a quoted string, or null for direct applications}
 company_confidential: {true when the end employer is unknown (company is "?"), else false}
 advertised_comp: {verbatim JD salary/range as a quoted string (e.g. "80-90k EUR"), or null when the JD states nothing}
+work_mode: "{remote | remote_flex | hybrid | onsite}"
+job_location: {"City, ST" for US roles or "City" outside the US, as a quoted string; null only when work_mode is remote or remote_flex and the JD names no hub}
 risk_summary:
   legitimacy: "{high_confidence | proceed_with_caution | suspicious}"
   classification: "{clear | flagged | not_evaluated}"
