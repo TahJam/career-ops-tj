@@ -43,22 +43,26 @@ export function hyperlinkFormula(url, label = 'Link') {
  * it: buildDesiredRows applies every entry the same way.
  *
  * @param {string} mappedStatus  the tracker status, already run through status_map
+ * @param {string|null} location  the job's column F value from its report
+ *   (lib/report-summary.mjs sheetLocation); null when unknown, which keeps a
+ *   hand-entered sheet value
  * @returns {Record<string, string|null>}  column -> desired value; null defers to the sheet
  */
-export function ownedValues(mappedStatus) {
-  return { status: mappedStatus };
+export function ownedValues(mappedStatus, location) {
+  return { status: mappedStatus, location };
 }
 
 /**
  * Overwrite each owned column whose desired value is set and differs.
- * @returns {boolean} whether the row changed
+ * @returns {Record<string, [string, string]>} column -> [old, new] for every
+ *   column that changed; empty when the row already matched
  */
 function applyOwned(row, desired) {
-  let changed = false;
+  const changed = {};
   for (const [col, value] of Object.entries(desired)) {
     if (value == null || row[col] === value) continue;
+    changed[col] = [row[col], value];
     row[col] = value;
-    changed = true;
   }
   return changed;
 }
@@ -75,15 +79,18 @@ function applyOwned(row, desired) {
  * @param {{
  *   sheetRows: Array<{ rowNumber: number, cells: string[], link: string|null }>,
  *   trackerRows: Array<Record<string, any>>,
- *   facts: (row: Record<string, any>) => { applyDate: string|null, resume: string|null, url: string|null, referral: boolean },
+ *   facts: (row: Record<string, any>) => { applyDate: string|null, resume: string|null, url: string|null, referral: boolean, location: string|null },
  *   statusMap: Record<string, string>,
- *   locationDefault: string,
  *   year: number|null,
  * }} input
- * @returns {{ rows: string[][], stats: object, skipped: Array<object> }}
+ * @returns {{ rows: string[][], stats: object, skipped: Array<object>, changes: Array<object>, unlocated: Array<object> }}
+ *   changes: one entry per overlap row whose owned columns changed;
+ *   unlocated: tracker rows added with a blank Location
  */
-export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, locationDefault, year = null }) {
+export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, year = null }) {
   const skipped = [];
+  const changes = [];
+  const unlocated = [];
   const byKey = new Map();
 
   // 1. Sheet rows first — they are the historical record and always survive.
@@ -114,7 +121,11 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, loc
       // Overlap: career-ops owns its columns, the sheet keeps everything else.
       // A row counts once however many owned columns changed, so
       // max_rows_per_run keeps counting rows.
-      if (applyOwned(existing, ownedValues(mapped))) updated++;
+      const changed = applyOwned(existing, ownedValues(mapped, f.location ?? null));
+      if (Object.keys(changed).length) {
+        updated++;
+        changes.push({ num: t.num, company: existing.company, role: existing.role, changed });
+      }
       existing.source = 'both';
       continue;
     }
@@ -131,11 +142,12 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, loc
       date,
       resume: f.resume || '',
       link: hyperlinkFormula(f.url),
-      location: locationDefault,
+      location: f.location ?? '',
       referral: f.referral ? 'Yes' : 'No',
       status: mapped,
     });
     added++;
+    if (!f.location) unlocated.push({ num: t.num, company: t.company, role: t.role });
   }
 
   // 3. Date order. Undated rows sort last but keep their relative order, so a
@@ -154,6 +166,8 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, loc
     rows,
     stats: { total: rows.length, fromSheet: sheetRows.length, added, updated, skipped: skipped.length },
     skipped,
+    changes,
+    unlocated,
   };
 }
 
