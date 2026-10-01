@@ -36,12 +36,40 @@ export function hyperlinkFormula(url, label = 'Link') {
 }
 
 /**
+ * The columns career-ops owns on a row both sides already have, and the value
+ * it wants in each. Every other column on an overlap row belongs to the sheet.
+ *
+ * Adding a column here is the whole change needed to make the sync maintain
+ * it: buildDesiredRows applies every entry the same way.
+ *
+ * @param {string} mappedStatus  the tracker status, already run through status_map
+ * @returns {Record<string, string|null>}  column -> desired value; null defers to the sheet
+ */
+export function ownedValues(mappedStatus) {
+  return { status: mappedStatus };
+}
+
+/**
+ * Overwrite each owned column whose desired value is set and differs.
+ * @returns {boolean} whether the row changed
+ */
+function applyOwned(row, desired) {
+  let changed = false;
+  for (const [col, value] of Object.entries(desired)) {
+    if (value == null || row[col] === value) continue;
+    row[col] = value;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
  * Build the desired A:H row set as the union of both sides, date-ordered.
  *
  * Precedence, per plan §2.2:
  *   - sheet-only rows survive verbatim (they pre-date career-ops)
  *   - on an overlap the SHEET wins Date (it holds the true apply date) and
- *     career-ops wins Response (it holds the current status)
+ *     everything else, except the columns career-ops owns (ownedValues)
  *   - tracker-only rows are built from career-ops facts
  *
  * @param {{
@@ -83,8 +111,10 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, loc
     const f = facts(t);
 
     if (existing) {
-      // Overlap: career-ops owns Response, the sheet keeps everything else.
-      if (existing.status !== mapped) { existing.status = mapped; updated++; }
+      // Overlap: career-ops owns its columns, the sheet keeps everything else.
+      // A row counts once however many owned columns changed, so
+      // max_rows_per_run keeps counting rows.
+      if (applyOwned(existing, ownedValues(mapped))) updated++;
       existing.source = 'both';
       continue;
     }
