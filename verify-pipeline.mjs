@@ -260,11 +260,8 @@ const normalizeKey = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 // skipped rather than grouped by company alone, which would false-positive
 // on two different roles at the same company.
 function extractRole(reportContent) {
-  const fence = reportContent.match(/##\s*Machine Summary\s*\n+```(?:yaml|yml|json)?\s*\n([\s\S]*?)\n```/i);
-  if (fence) {
-    const m = fence[1].match(/^role:\s*["']?(.+?)["']?\s*$/m);
-    if (m && m[1].trim()) return m[1].trim();
-  }
+  const role = readMachineSummary(reportContent)?.role;
+  if (typeof role === 'string' && role.trim()) return role.trim();
   const title = reportContent.split('\n').find(l => l.startsWith('# '));
   if (title) {
     const parts = title.split(/[—–]/);
