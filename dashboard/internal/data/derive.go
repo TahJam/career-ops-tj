@@ -27,8 +27,9 @@ var (
 	// ISO dates embedded in notes ("Rejected 2026-06-04", "viewed 2026-06-04")
 	reISODate = regexp.MustCompile(`\b20\d{2}-\d{2}-\d{2}\b`)
 	// "City ST" / "City, ST" with a strict two-letter US state code so prose like
-	// "Sams AI" or "Kerin Colby DONE" can't false-positive.
-	reCityState = regexp.MustCompile(`\b([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,2}),? (A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b`)
+	// "Sams AI" or "Kerin Colby DONE" can't false-positive. The codes are the
+	// same usStates list the report-location check uses.
+	reCityState = regexp.MustCompile(`\b([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,2}),? (` + strings.Join(usStates, "|") + `)\b`)
 	// International cities, checked only when no US "City, ST" matches, so
 	// European/other non-US roles still surface a Location. Cities only (not bare
 	// country names) to avoid prose false-positives like "Portugal eligible" or
@@ -43,21 +44,7 @@ var (
 	// valuation", "$124M total raised", "$70M Series C" describe the company,
 	// not pay, and must not be picked up as the Pay column's figure.
 	reFundingContext = regexp.MustCompile(`(?i)^\s*(valuation|(total\s+)?raised|series\s|round\b)`)
-	// A report's Machine Summary YAML fence; group 1 is the body. Mirrors
-	// MACHINE_SUMMARY_RE in lib/report-summary.mjs.
-	reMachineSummary = regexp.MustCompile("(?is)##\\s*Machine Summary\\s*\\n+```(?:yaml|yml|json)?\\s*\\n(.*?)\\n```")
-	reWorkModeKey    = regexp.MustCompile(`(?m)^work_mode:[ \t]*(.*)$`)
-	reJobLocationKey = regexp.MustCompile(`(?m)^job_location:[ \t]*(.*)$`)
 )
-
-// workModeLabels maps the report's work_mode enum onto the WorkMode values the
-// pipeline screen already renders and sorts on.
-var workModeLabels = map[string]string{
-	"remote":      "Remote",
-	"remote_flex": "RemoteFlex",
-	"hybrid":      "Hybrid",
-	"onsite":      "Full",
-}
 
 // currencyTokens is the single source of truth for currencies the dashboard
 // recognizes in Notes. Suffix tokens emit without trailing space — the
@@ -138,70 +125,6 @@ func payCeiling(span string) float64 {
 		}
 	}
 	return top
-}
-
-// yamlScalar reads a one-line YAML scalar the way js-yaml does for the values a
-// Machine Summary holds: quotes are stripped, a trailing " # comment" is
-// dropped, and null / ~ / "" read as empty.
-func yamlScalar(raw string) string {
-	v := strings.TrimSpace(raw)
-	if len(v) > 0 && (v[0] == '"' || v[0] == '\'') {
-		if end := strings.IndexByte(v[1:], v[0]); end >= 0 {
-			return strings.TrimSpace(v[1 : end+1])
-		}
-		return ""
-	}
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
-	}
-	if i := strings.Index(v, "\t#"); i >= 0 {
-		v = v[:i]
-	}
-	v = strings.TrimSpace(v)
-	if v == "null" || v == "~" {
-		return ""
-	}
-	return v
-}
-
-// lastKey returns the last top-level value for a key regex in a fence body. A
-// duplicated key overrides, matching js-yaml's json mode in the JS reader.
-func lastKey(re *regexp.Regexp, body string) string {
-	all := re.FindAllStringSubmatch(body, -1)
-	if len(all) == 0 {
-		return ""
-	}
-	return yamlScalar(all[len(all)-1][1])
-}
-
-// parseJobLocation reads work_mode / job_location from a report's Machine
-// Summary. It is the Go twin of jobLocation() in lib/report-summary.mjs; both
-// run against tests/fixtures/report-location-cases.json. An unknown work_mode
-// reads as "".
-func parseJobLocation(report string) (workMode, location string) {
-	fence := reMachineSummary.FindStringSubmatch(report)
-	if fence == nil {
-		return "", ""
-	}
-	workMode = strings.ToLower(lastKey(reWorkModeKey, fence[1]))
-	if _, ok := workModeLabels[workMode]; !ok {
-		workMode = ""
-	}
-	return workMode, lastKey(reJobLocationKey, fence[1])
-}
-
-// applyReportLocation overrides the Notes-derived Location and WorkMode with
-// the report's work_mode / job_location, the single source of truth for a
-// job's location. A report that predates those keys leaves the Notes heuristic
-// in place. When the report has them, both fields come from it, including an
-// empty Location for a remote role with no hub.
-func applyReportLocation(app *model.CareerApplication, report string) {
-	workMode, location := parseJobLocation(report)
-	if workMode == "" {
-		return
-	}
-	app.WorkMode = workModeLabels[workMode]
-	app.Location = location
 }
 
 // deriveNoteFields populates Location, WorkMode, PayRange, PaySource and

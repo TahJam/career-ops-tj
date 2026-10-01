@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/santifer/career-ops/dashboard/internal/model"
@@ -427,13 +429,18 @@ func TestParseJobLocationSharedFixture(t *testing.T) {
 			Report   string  `json:"report"`
 			WorkMode *string `json:"workMode"`
 			Location *string `json:"location"`
+			Check    string  `json:"check"`
 		} `json:"cases"`
+		USStates []string `json:"usStates"`
 	}
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatalf("parse shared fixture: %v", err)
 	}
 	if len(fixture.Cases) == 0 {
 		t.Fatal("shared fixture has no cases")
+	}
+	if got, want := strings.Join(sortedCopy(usStates), ","), strings.Join(fixture.USStates, ","); got != want {
+		t.Errorf("usStates drifted from the shared fixture:\n got %s\nwant %s", got, want)
 	}
 	deref := func(p *string) string {
 		if p == nil {
@@ -449,6 +456,9 @@ func TestParseJobLocationSharedFixture(t *testing.T) {
 			}
 			if location != deref(c.Location) {
 				t.Errorf("location = %q, want %q", location, deref(c.Location))
+			}
+			if state, reason := checkJobLocation(c.Report); state != c.Check {
+				t.Errorf("check = %q (%s), want %q", state, reason, c.Check)
 			}
 		})
 	}
@@ -477,6 +487,14 @@ func TestApplyReportLocation(t *testing.T) {
 		{"no Machine Summary keeps the notes heuristic",
 			"Charlotte, NC (Hybrid)", "# R\n\n## Skip note\n",
 			"Hybrid", "Charlotte, NC"},
+		// PR #4 review [4]: the sheet ignores a report that fails the check, so
+		// the dashboard must too, or the two show different locations.
+		{"an invalid work_mode keeps the notes heuristic, as the sheet does",
+			"Austin on-site", fence("work_mode: \"on-site\"\njob_location: \"San Francisco, CA\"\n"),
+			"Full", ""},
+		{"an invalid location keeps the notes heuristic, as the sheet does",
+			"Remote US", fence("work_mode: \"onsite\"\njob_location: \"TBD\"\n"),
+			"Remote", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -488,4 +506,40 @@ func TestApplyReportLocation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestYAMLScalar mirrors the scalar-rule table in tests/report-summary.test.mjs.
+func TestYAMLScalar(t *testing.T) {
+	cases := []struct {
+		raw    string
+		want   string
+		wantOK bool
+	}{
+		{`"Austin, TX"`, "Austin, TX", true},
+		{`'Austin, TX'`, "Austin, TX", true},
+		{`Austin, TX`, "Austin, TX", true},
+		{`'O''Fallon, MO'`, "O'Fallon, MO", true},
+		{`"say \"hi\""`, `say "hi"`, true},
+		{`onsite  # five days`, "onsite", true},
+		{`"a # b"`, "a # b", true},
+		{`null`, "", false},
+		{`Null`, "", false},
+		{`NULL`, "", false},
+		{`~`, "", false},
+		{``, "", false},
+		{`nULL`, "nULL", true},
+		{`"unterminated`, "", false},
+	}
+	for _, c := range cases {
+		got, ok := yamlScalar(c.raw)
+		if got != c.want || ok != c.wantOK {
+			t.Errorf("yamlScalar(%q) = (%q, %v), want (%q, %v)", c.raw, got, ok, c.want, c.wantOK)
+		}
+	}
+}
+
+func sortedCopy(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
 }

@@ -192,6 +192,38 @@
       "location": "Austin, TX",
       "sheetLocation": "Austin, TX",
       "check": "ok"
+    },
+    {
+      "name": "NULL is a YAML null, like null and ~",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: \"remote\"\njob_location: NULL\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "remote",
+      "location": null,
+      "sheetLocation": "Remote",
+      "check": "ok"
+    },
+    {
+      "name": "Null is a YAML null too, so an onsite role has no city",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: onsite\njob_location: Null\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": null,
+      "sheetLocation": null,
+      "check": "invalid"
+    },
+    {
+      "name": "a doubled single quote is an escaped quote ('O''Fallon, MO')",
+      "report": "# Evaluation: Acme — Engineer\n\n**Date:** 2026-10-01\n\n---\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\nrole: \"Engineer\"\nscore: 4.2\nwork_mode: 'onsite'\njob_location: 'O''Fallon, MO'\nrisk_summary:\n  legitimacy: \"high_confidence\"\n```\n\n## A) Role Summary\n\n| Field | Value |\n|---|---|\n| Remote | see Machine Summary |\n",
+      "workMode": "onsite",
+      "location": "O'Fallon, MO",
+      "sheetLocation": "O'Fallon, MO",
+      "check": "ok"
+    },
+    {
+      "name": "a json fence is decoded, not line-scanned",
+      "report": "# Evaluation: Acme — Engineer\n\n## Machine Summary\n\n```json\n{\n  \"company\": \"Acme\",\n  \"work_mode\": \"hybrid\",\n  \"job_location\": \"Austin, TX\"\n}\n```\n",
+      "workMode": "hybrid",
+      "location": "Austin, TX",
+      "sheetLocation": "Austin, TX",
+      "check": "ok"
     }
   ],
   "usStates": [
