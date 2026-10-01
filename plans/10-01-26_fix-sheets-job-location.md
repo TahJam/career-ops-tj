@@ -365,7 +365,7 @@ Conventions, taken from this repo's history (e.g. the `plugin-googlesheet` branc
 | | **Phase A — location fix** | | |
 | 2 | `feat(batch-prompt): add work_mode and job_location to the Machine Summary` | 1, 2 | `batch/batch-prompt.md`, `modes/oferta.md` |
 | 3 | `feat(lib): add shared Machine Summary reader with job-location rules` | 3a | `lib/report-summary.mjs`, `tests/fixtures/report-location-cases.json`, `tests/report-summary.test.mjs` |
-| 4 | `feat(verify-pipeline): flag hybrid/onsite reports missing job_location` | 3b | `verify-pipeline.mjs`, `test-all.mjs` |
+| 4 | `feat(verify-pipeline): flag hybrid/onsite reports missing job_location` | 3b | `verify-pipeline.mjs`, `tests/verify-pipeline-job-location.test.mjs` |
 | 5 | `refactor(sheets): generalize overlap updates into owned columns` | 4a | `plugins/sheets/_reconcile.mjs`, tests |
 | 6 | `fix(sheets): write each job's location from its report` | 4b | `plugins/sheets/*`, `config/plugins.example.yml`, tests |
 | 7 | `docs(sheets): redefine column F as the job's location` | 4c | `plans/08-31-26_google-sheets-sync.md`, `plugins/sheets/skill.md` |

@@ -23,6 +23,7 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync 
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns } from './tracker-parse.mjs';
+import { readMachineSummary, checkJobLocation } from './lib/report-summary.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
@@ -278,11 +279,15 @@ const reportFiles = existsSync(REPORTS_DIR)
 
 let dupReports = 0;
 const reportsByRole = new Map();
+// Report bodies, read once here and reused by the later per-report checks.
+const reportTexts = new Map();
 for (const name of reportFiles) {
   const companySlug = name.match(REPORT_FILE_RE)[2];
   let role = null;
   try {
-    role = extractRole(readFileSync(join(REPORTS_DIR, name), 'utf-8'));
+    const text = readFileSync(join(REPORTS_DIR, name), 'utf-8');
+    reportTexts.set(name, text);
+    role = extractRole(text);
   } catch {
     // Unreadable report — the orphan check below still sees it.
   }
@@ -397,6 +402,33 @@ for (const [num, group] of numGroups) {
   }
 }
 if (dupeNums === 0) ok('No duplicate tracker numbers');
+
+// --- Check 13: Job location keys (plans/10-01-26_fix-sheets-job-location.md) ---
+// The sheet sync and the dashboard read a job's location from the Machine
+// Summary's work_mode / job_location, so a hybrid or onsite report without a
+// normalized city reaches the sheet as a blank Location. The rule lives in
+// lib/report-summary.mjs; this only reports it. Reports with no Machine Summary
+// (gate-skip notes) are out of scope. Reports written before the keys existed
+// are one aggregated warning, not one line each.
+let badJobLocations = 0;
+const missingJobLocation = [];
+for (const [name, text] of reportTexts) {
+  const summary = readMachineSummary(text);
+  if (!summary) continue;
+  const { state, reason } = checkJobLocation(summary);
+  if (state === 'invalid') {
+    error(`reports/${name}: ${reason}`);
+    badJobLocations++;
+  } else if (state === 'missing') {
+    missingJobLocation.push(name.match(REPORT_FILE_RE)[1]);
+  }
+}
+if (missingJobLocation.length) {
+  const shown = missingJobLocation.slice(0, 10).join(', ');
+  const more = missingJobLocation.length > 10 ? `, … (+${missingJobLocation.length - 10} more)` : '';
+  warn(`${missingJobLocation.length} report(s) have no work_mode / job_location yet: ${shown}${more}`);
+}
+if (badJobLocations === 0 && missingJobLocation.length === 0) ok('Job location keys valid in every report');
 
 // --- Summary ---
 console.log('\n' + '='.repeat(50));
