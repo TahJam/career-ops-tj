@@ -23,7 +23,7 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync 
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns } from './tracker-parse.mjs';
-import { readMachineSummary, checkJobLocation } from './lib/report-summary.mjs';
+import { parseMachineSummary, checkJobLocation } from './lib/report-summary.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
@@ -259,8 +259,11 @@ const normalizeKey = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 // "# Evaluación: {Company} — {Role}". Reports where neither parses are
 // skipped rather than grouped by company alone, which would false-positive
 // on two different roles at the same company.
-function extractRole(reportContent) {
-  const role = readMachineSummary(reportContent)?.role;
+//
+// `summary` is the report's already-parsed Machine Summary (or null), so each
+// fence is parsed once per run and shared with Check 13.
+function extractRole(reportContent, summary) {
+  const role = summary?.role;
   if (typeof role === 'string' && role.trim()) return role.trim();
   const title = reportContent.split('\n').find(l => l.startsWith('# '));
   if (title) {
@@ -276,15 +279,16 @@ const reportFiles = existsSync(REPORTS_DIR)
 
 let dupReports = 0;
 const reportsByRole = new Map();
-// Report bodies, read once here and reused by the later per-report checks.
-const reportTexts = new Map();
+// Machine Summary parse results, one per report, reused by Check 13.
+const reportSummaries = new Map();
 for (const name of reportFiles) {
   const companySlug = name.match(REPORT_FILE_RE)[2];
   let role = null;
   try {
     const text = readFileSync(join(REPORTS_DIR, name), 'utf-8');
-    reportTexts.set(name, text);
-    role = extractRole(text);
+    const parsed = parseMachineSummary(text);
+    reportSummaries.set(name, parsed);
+    role = extractRole(text, parsed.summary);
   } catch {
     // Unreadable report — the orphan check below still sees it.
   }
@@ -407,11 +411,20 @@ if (dupeNums === 0) ok('No duplicate tracker numbers');
 // lib/report-summary.mjs; this only reports it. Reports with no Machine Summary
 // (gate-skip notes) are out of scope. Reports written before the keys existed
 // are one aggregated warning, not one line each.
+//
+// A fence that exists but does not parse is an error of its own, never "no
+// fence": the readers fall back to its top-level lines, so the report still
+// half-works and nothing else would ever surface it.
 let badJobLocations = 0;
 const missingJobLocation = [];
-for (const [name, text] of reportTexts) {
-  const summary = readMachineSummary(text);
-  if (!summary) continue;
+for (const [name, { status, summary, error: parseError }] of reportSummaries) {
+  if (status === 'none') continue;
+  if (status !== 'ok') {
+    const recovered = status === 'partial' ? `; ${Object.keys(summary).length} top-level field(s) recovered line by line` : '; nothing recovered';
+    error(`reports/${name}: Machine Summary does not parse as YAML (${parseError})${recovered}`);
+    badJobLocations++;
+    if (!summary) continue;
+  }
   const { state, reason } = checkJobLocation(summary);
   if (state === 'invalid') {
     error(`reports/${name}: ${reason}`);

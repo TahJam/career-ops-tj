@@ -59,6 +59,19 @@ try {
   const clean = verify(env);
   ok('once every report carries valid keys the check is green',
     clean.code === 0 && clean.out.includes('Job location keys valid in every report'));
+
+  // Regression (PR #4 review [2]): a fence that exists but does not parse was
+  // skipped like a gate-skip note, so verify printed "valid in every report"
+  // while the sheet sync could not read the job's location.
+  writeFileSync(join(reports, '002-acme-2026-10-01.md'),
+    report('Onsite Eng', 'notes: comp: base + equity\nwork_mode: "onsite"\njob_location: "Austin, TX"\n'));
+  writeFileSync(join(reports, '003-acme-2026-10-01.md'), '# Evaluation: Acme — Legacy Eng\n\n## Machine Summary\n\n```yaml\n{{{ not yaml\n```\n');
+  const broken = verify(env);
+  ok('a fence that does not parse fails the pipeline (exit 1)', broken.code === 1);
+  ok('a partly readable fence is named, with how much was recovered',
+    /❌ reports\/002-acme-2026-10-01\.md: Machine Summary does not parse as YAML \(.+\); \d+ top-level field\(s\) recovered/.test(broken.out));
+  ok('an unreadable fence is named too', /❌ reports\/003-acme-2026-10-01\.md: Machine Summary does not parse as YAML \(.+\); nothing recovered/.test(broken.out));
+  ok('a broken fence is never reported as valid', !broken.out.includes('Job location keys valid in every report'));
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
