@@ -144,8 +144,12 @@ Row count grows 24 → 37; the grid is 1000 rows, so no dimension insert is need
 | Row source | Company/Position | Date | Resume | Link | Location | Referral | Response |
 |---|---|---|---|---|---|---|---|
 | Sheet only (23) | sheet | sheet | sheet | sheet URL → `=HYPERLINK` | sheet | sheet | sheet |
-| Both (1) | sheet | **sheet** (apply date wins) | sheet | sheet | sheet | sheet | **career-ops** |
-| Tracker only (13) | tracker | status-log → tracker | from report | report `**URL:**` | profile | from `via:` | career-ops |
+| Both (1) | sheet | **sheet** (apply date wins) | sheet | sheet | ~~sheet~~ **career-ops** when the report has one | sheet | **career-ops** |
+| Tracker only (13) | tracker | status-log → tracker | from report | report `**URL:**` | ~~profile~~ report | from `via:` | career-ops |
+
+> **Superseded 2026-10-01 (Location column):** career-ops now owns Location on overlap rows, the same way it
+> owns Response, and fills it from the report rather than the profile. See
+> [`10-01-26_fix-sheets-job-location.md`](10-01-26_fix-sheets-job-location.md).
 
 Sheet-only rows are **never dropped and never rewritten in substance** — they pre-date career-ops and are the user's own history. Their only change is `"Link"` → `=HYPERLINK("<same url>","Link")`, which is what makes the rewrite lossless.
 
@@ -162,7 +166,7 @@ After the value write, one `batchUpdate` extends `numberFormat` and `dataValidat
 | C Date | `data/status-log.tsv` transition into `Applied`; fallback tracker Date | written `MM/DD/YYYY`, `USER_ENTERED` |
 | D Resume | `**PDF:**` in report / `data/pdf-index.tsv`, **basename minus `.pdf`** | e.g. `cv-taher-jamali-langchain-applied-ai` |
 | E Reference Link | report `**URL:**` → `=HYPERLINK("<url>","Link")` | |
-| F Location | `config/profile.yml` → `profile.location` = `"Austin, TX"` | all 24 existing rows use exactly this; it's the candidate's base, not the job's — the `COUNTIF(F:F,"* TX")` formulas depend on it |
+| F Location | ~~`config/profile.yml` → `profile.location` = `"Austin, TX"`~~ **Superseded 2026-10-01:** the report's Machine Summary `work_mode` / `job_location`, via `lib/report-summary.mjs` `sheetLocation()` | ~~it's the candidate's base, not the job's~~ It is the **job's** location: `Remote` for remote roles (counted by `COUNTIF(F:F,"Remote")`), else `"City, ST"` (counted by `COUNTIF(F:F,"* TX")`). The original reading stamped `Austin, TX` on remote roles. See [`10-01-26_fix-sheets-job-location.md`](10-01-26_fix-sheets-job-location.md) |
 | G Referral | `Yes` if report `via:` non-null or notes mention a referral, else `No` | |
 | H Response | status map below | |
 
@@ -330,7 +334,7 @@ Keeping `_reconcile.mjs` pure is the point of the split: the join, date ordering
 | File | Layer | Purpose |
 |---|---|---|
 | `plugins/sheets/*` | system | as above |
-| `config/plugins.yml` | **user** | must be created — doesn't exist yet; holds `sheets.enabled: true` + the status map, tab name, location default, row cap |
+| `config/plugins.yml` | **user** | must be created — doesn't exist yet; holds `sheets.enabled: true` + the status map, tab name, ~~location default~~ (removed 2026-10-01), row cap |
 | `tests/sheets-reconcile.test.mjs` | system | fixture tests for the pure planner; auto-discovered by `test-all.mjs` |
 
 **Modified**
@@ -345,7 +349,7 @@ Keeping `_reconcile.mjs` pure is the point of the split: the join, date ordering
 | `.gitignore` | `data/sheet-backups/`, `data/sheets-sync-state.json` |
 | `modes/_custom.md` | **user layer** — "after `set-status`, run the sheets export" |
 
-Per the Data Contract, the status map, location default, and tab config are user-facing targeting data — they belong in `config/plugins.yml`, never in `modes/_shared.md`.
+Per the Data Contract, the status map and tab config are user-facing targeting data — they belong in `config/plugins.yml`, never in `modes/_shared.md`.
 
 **Note on `GOOGLE_SYNC`:** the plugin's real on/off switch becomes `enabled: true` in `config/plugins.yml`, which is the engine's own gate. `GOOGLE_SYNC` is kept as `optionalEnv` and honoured as a second kill-switch (`GOOGLE_SYNC=false` → no-op), so the flag already in `.env` keeps meaning what it looks like it means.
 
