@@ -48,8 +48,9 @@ plugins:
     enabled: false
     # Only this tab is ever written. Rows dated outside its year are skipped.
     tab: "Apply 2026"
-    # Column F. The sheet's COUNTIF(F:F,"* TX") formulas depend on this format.
-    location_default: "Austin, TX"
+    # Column F (Location) has no setting: it comes from each report's Machine
+    # Summary work_mode / job_location ("Remote" or "City, ST"). career-ops owns
+    # it, so fix a wrong location in the report; a hand edit is reverted.
     # Guard: refuse a run that would write more rows than this.
     max_rows_per_run: 50
     # career-ops canonical state -> your sheet's Response dropdown value.

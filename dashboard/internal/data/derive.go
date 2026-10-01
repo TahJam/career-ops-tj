@@ -27,8 +27,9 @@ var (
 	// ISO dates embedded in notes ("Rejected 2026-06-04", "viewed 2026-06-04")
 	reISODate = regexp.MustCompile(`\b20\d{2}-\d{2}-\d{2}\b`)
 	// "City ST" / "City, ST" with a strict two-letter US state code so prose like
-	// "Sams AI" or "Kerin Colby DONE" can't false-positive.
-	reCityState = regexp.MustCompile(`\b([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,2}),? (A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])\b`)
+	// "Sams AI" or "Kerin Colby DONE" can't false-positive. The codes are the
+	// same usStates list the report-location check uses.
+	reCityState = regexp.MustCompile(`\b([A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+){0,2}),? (` + strings.Join(usStates, "|") + `)\b`)
 	// International cities, checked only when no US "City, ST" matches, so
 	// European/other non-US roles still surface a Location. Cities only (not bare
 	// country names) to avoid prose false-positives like "Portugal eligible" or
@@ -128,6 +129,8 @@ func payCeiling(span string) float64 {
 
 // deriveNoteFields populates Location, WorkMode, PayRange, PaySource and
 // LastContact from the application's Notes (plus Role for work-mode keywords).
+// Location and WorkMode are a fallback: applyReportLocation replaces them when
+// the report carries work_mode / job_location.
 func deriveNoteFields(app *model.CareerApplication) {
 	lower := strings.ToLower(app.Role + " " + app.Notes)
 

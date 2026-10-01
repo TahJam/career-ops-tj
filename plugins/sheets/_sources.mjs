@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import { parseMachineSummary, checkJobLocation, sheetLocation } from '../../lib/report-summary.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -103,49 +103,48 @@ function listReports() {
  * Filenames are {###}-{slug}-{date}.md, but older rows use an unpadded number,
  * so both spellings are accepted.
  *
+ * `location` is column F, from the Machine Summary's work_mode / job_location
+ * (lib/report-summary.mjs owns the rule). When it is null, which leaves an
+ * existing sheet value alone, `locationReason` says why, so the sync log points
+ * at the real problem.
+ *
  * @param {number} num
- * @returns {{ url: string|null, pdf: string|null, via: string|null }}
+ * @returns {{ url: string|null, pdf: string|null, via: string|null, location: string|null, locationReason: string|null }}
  */
 export function reportFacts(num) {
   const cached = reportCache.get(num);
   if (cached) return cached;
 
-  const facts = { url: null, pdf: null, via: null };
+  const facts = { url: null, pdf: null, via: null, location: null, locationReason: 'no report file' };
   const padded = String(num).padStart(3, '0');
   const name = listReports().find(f => f.startsWith(`${padded}-`) || f.startsWith(`${num}-`));
 
   if (name) {
     let text = '';
     try { text = readFileSync(path.join(ROOT, 'reports', name), 'utf8'); } catch { text = ''; }
+    // URL and PDF are header lines, not Machine Summary keys.
     const url = /^\*\*URL:\*\*\s*(\S+)\s*$/m.exec(text);
     const pdf = /^\*\*PDF:\*\*\s*(\S+)\s*$/m.exec(text);
-    const via = /^via:\s*(.+)$/m.exec(text);
     if (url && /^https?:\/\//i.test(url[1])) facts.url = url[1];
     if (pdf) facts.pdf = path.basename(pdf[1]).replace(/\.pdf$/i, '');
-    if (via) {
-      const v = via[1].trim().replace(/^["']|["']$/g, '');
-      if (v && !['null', '—', '-', ''].includes(v)) facts.via = v;
-    }
+
+    const { status, summary } = parseMachineSummary(text);
+    const via = typeof summary?.via === 'string' ? summary.via.trim() : '';
+    if (via && !['—', '-'].includes(via)) facts.via = via;
+    facts.location = sheetLocation(summary);
+    facts.locationReason = facts.location ? null : locationReason(status, summary);
   }
   reportCache.set(num, facts);
   return facts;
 }
 
-/**
- * The candidate's base location — column F, which the sheet's
- * COUNTIF(F:F,"* TX") formulas read, so the "City, ST" shape matters.
- *
- * config/profile.yml carries this as candidate.location ("Austin, TX"). The
- * separate top-level `location:` block holds city/country/timezone and has no
- * state field, so it is only a last resort.
- */
-export function profileLocation(fallback = '') {
-  const text = read('config/profile.yml');
-  if (!text) return fallback;
-  try {
-    const doc = yaml.load(text);
-    return doc?.candidate?.location || doc?.profile?.location || doc?.location?.city || fallback;
-  } catch { return fallback; }
+/** Why a report yields no column F value. Callers pass a report that exists. */
+export function locationReason(status, summary) {
+  if (status === 'none') return 'the report has no Machine Summary';
+  if (status === 'unparseable') return 'the Machine Summary does not parse';
+  const { state, reason } = checkJobLocation(summary);
+  if (state === 'missing') return 'the report has no work_mode / job_location';
+  return reason ?? 'the report location is invalid';
 }
 
 /** Test seam: forget cached report lookups. */

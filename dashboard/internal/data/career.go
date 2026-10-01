@@ -152,6 +152,10 @@ func ParseApplications(careerOpsPath string) []model.CareerApplication {
 		if err != nil {
 			continue
 		}
+		// Location lives in the Machine Summary, past the header, so it reads
+		// the full report before the URL strategies below can `continue`.
+		applyReportLocation(&apps[i], string(reportContent))
+
 		header := string(reportContent)
 		// Only scan the header (first 1000 bytes) for speed
 		if len(header) > 1000 {

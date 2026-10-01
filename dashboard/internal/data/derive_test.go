@@ -1,6 +1,11 @@
 package data
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/santifer/career-ops/dashboard/internal/model"
@@ -408,4 +413,133 @@ func TestIsBareSymbol(t *testing.T) {
 			t.Errorf("isBareSymbol(%q) = %v, want %v", tc.tok, got, tc.want)
 		}
 	}
+}
+
+// TestParseJobLocationSharedFixture runs the cases lib/report-summary.mjs is
+// tested against (tests/report-summary.test.mjs). A rule changed in one reader
+// and not the other fails here or there.
+func TestParseJobLocationSharedFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "fixtures", "report-location-cases.json"))
+	if err != nil {
+		t.Fatalf("read shared fixture: %v", err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Name     string  `json:"name"`
+			Report   string  `json:"report"`
+			WorkMode *string `json:"workMode"`
+			Location *string `json:"location"`
+			Check    string  `json:"check"`
+		} `json:"cases"`
+		USStates []string `json:"usStates"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatalf("parse shared fixture: %v", err)
+	}
+	if len(fixture.Cases) == 0 {
+		t.Fatal("shared fixture has no cases")
+	}
+	if got, want := strings.Join(sortedCopy(usStates), ","), strings.Join(fixture.USStates, ","); got != want {
+		t.Errorf("usStates drifted from the shared fixture:\n got %s\nwant %s", got, want)
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	for _, c := range fixture.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			workMode, location := parseJobLocation(c.Report)
+			if workMode != deref(c.WorkMode) {
+				t.Errorf("workMode = %q, want %q", workMode, deref(c.WorkMode))
+			}
+			if location != deref(c.Location) {
+				t.Errorf("location = %q, want %q", location, deref(c.Location))
+			}
+			if state, reason := checkJobLocation(c.Report); state != c.Check {
+				t.Errorf("check = %q (%s), want %q", state, reason, c.Check)
+			}
+		})
+	}
+}
+
+func TestApplyReportLocation(t *testing.T) {
+	fence := func(keys string) string {
+		return "# R\n\n## Machine Summary\n\n```yaml\ncompany: \"Acme\"\n" + keys + "```\n"
+	}
+	cases := []struct {
+		name         string
+		notes        string
+		report       string
+		wantWorkMode string
+		wantLocation string
+	}{
+		{"report location replaces a notes guess with no state code",
+			"Austin on-site; comp unstated", fence("work_mode: \"onsite\"\njob_location: \"Austin, TX\"\n"),
+			"Full", "Austin, TX"},
+		{"remote report clears a city the notes mentioned",
+			"Remote US; some site visits Austin, TX", fence("work_mode: \"remote_flex\"\njob_location: null\n"),
+			"RemoteFlex", ""},
+		{"a report without the keys keeps the notes heuristic",
+			"Remote US; Python", fence(""),
+			"Remote", ""},
+		{"no Machine Summary keeps the notes heuristic",
+			"Charlotte, NC (Hybrid)", "# R\n\n## Skip note\n",
+			"Hybrid", "Charlotte, NC"},
+		// PR #4 review [4]: the sheet ignores a report that fails the check, so
+		// the dashboard must too, or the two show different locations.
+		{"an invalid work_mode keeps the notes heuristic, as the sheet does",
+			"Austin on-site", fence("work_mode: \"on-site\"\njob_location: \"San Francisco, CA\"\n"),
+			"Full", ""},
+		{"an invalid location keeps the notes heuristic, as the sheet does",
+			"Remote US", fence("work_mode: \"onsite\"\njob_location: \"TBD\"\n"),
+			"Remote", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			app := model.CareerApplication{Notes: c.notes}
+			deriveNoteFields(&app)
+			applyReportLocation(&app, c.report)
+			if app.WorkMode != c.wantWorkMode || app.Location != c.wantLocation {
+				t.Errorf("got WorkMode=%q Location=%q, want %q / %q", app.WorkMode, app.Location, c.wantWorkMode, c.wantLocation)
+			}
+		})
+	}
+}
+
+// TestYAMLScalar mirrors the scalar-rule table in tests/report-summary.test.mjs.
+func TestYAMLScalar(t *testing.T) {
+	cases := []struct {
+		raw    string
+		want   string
+		wantOK bool
+	}{
+		{`"Austin, TX"`, "Austin, TX", true},
+		{`'Austin, TX'`, "Austin, TX", true},
+		{`Austin, TX`, "Austin, TX", true},
+		{`'O''Fallon, MO'`, "O'Fallon, MO", true},
+		{`"say \"hi\""`, `say "hi"`, true},
+		{`onsite  # five days`, "onsite", true},
+		{`"a # b"`, "a # b", true},
+		{`null`, "", false},
+		{`Null`, "", false},
+		{`NULL`, "", false},
+		{`~`, "", false},
+		{``, "", false},
+		{`nULL`, "nULL", true},
+		{`"unterminated`, "", false},
+	}
+	for _, c := range cases {
+		got, ok := yamlScalar(c.raw)
+		if got != c.want || ok != c.wantOK {
+			t.Errorf("yamlScalar(%q) = (%q, %v), want (%q, %v)", c.raw, got, ok, c.want, c.wantOK)
+		}
+	}
+}
+
+func sortedCopy(in []string) []string {
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
 }

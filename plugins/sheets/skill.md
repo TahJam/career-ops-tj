@@ -26,6 +26,15 @@ edit to `data/applications.md`.
 | Anything differs | rewrites `A2:H<n>` in date order |
 | `SHEETS_SYNC_MODE=full` | rewrites even when values already match |
 
+## Columns career-ops owns
+
+On a row both sides already have, career-ops owns **H (Response)** and **F
+(Location)**; the sheet keeps everything else. An owned column is rewritten
+whenever it differs from career-ops, so **a hand edit to F or H is reverted on
+the next sync** — fix the source instead: the tracker status for H, the
+report's Machine Summary `work_mode` / `job_location` for F. A report with no
+valid location leaves F as it is, and the sync log says why.
+
 `data/sheets-sync-state.json` holds a cursor into `data/status-log.tsv`. It is
 bookkeeping for that ledger's other readers — it does **not** gate the sync, and
 deleting it changes nothing about what gets written.

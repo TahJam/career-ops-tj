@@ -27,7 +27,7 @@ import { getAccessToken, SCOPE_WRITE } from './_auth.mjs';
 import {
   buildDesiredRows, planWrites, pendingFromJournal, currentSheetValues, planIsNoOp,
 } from './_reconcile.mjs';
-import { applyDates, resumeNames, reportFacts, reportNumsFromCell, profileLocation } from './_sources.mjs';
+import { applyDates, resumeNames, reportFacts, reportNumsFromCell } from './_sources.mjs';
 import { loadState, saveState, writeBackup } from './_state.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -35,7 +35,6 @@ const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 const DEFAULTS = {
   tab: 'Apply 2026',
-  location_default: '',
   max_rows_per_run: 50,
   status_map: {
     Applied: 'Submitted - Waiting',
@@ -100,7 +99,6 @@ export default {
     const sheet = await readTab(ctx, tab);
     const dates = applyDates();
     const resumes = resumeNames();
-    const location = cfg.location_default || profileLocation('');
 
     const all = Array.isArray(snapshot?.applications) ? snapshot.applications : [];
     // A delta run still reconciles the WHOLE union — it just refuses to act when
@@ -124,15 +122,16 @@ export default {
         resume: resumes.get(reportNum) ?? rf.pdf ?? null,
         url: rf.url,
         referral: isReferral(row, rf),
+        location: rf.location,
+        locationReason: rf.locationReason,
       };
     };
 
-    const { rows, stats, skipped } = buildDesiredRows({
+    const { rows, stats, skipped, changes, unlocated } = buildDesiredRows({
       sheetRows: sheet.rows,
       trackerRows,
       facts,
       statusMap: cfg.status_map,
-      locationDefault: location,
       year,
     });
 
@@ -142,8 +141,12 @@ export default {
     const values = rows.map(r => [...r]);
     values.forEach(r => { r[2] = isoToUsDate(r[2]) || r[2]; });
 
-    log(`plan: ${stats.total} row(s) — ${stats.fromSheet} existing, ${stats.added} added, ${stats.updated} status update(s)`);
+    log(`plan: ${stats.total} row(s) — ${stats.fromSheet} existing, ${stats.added} added, ${stats.updated} row update(s)`);
     for (const s of skipped) log(`  skipped #${s.num} ${s.company}: ${s.reason}`);
+    for (const u of unlocated) {
+      const effect = u.action === 'kept' ? 'kept the sheet\'s column F' : 'column F left blank';
+      log(`  no location for #${u.num} ${u.company} — ${u.role}: ${u.reason ?? 'unknown'}; ${effect}`);
+    }
 
     const changed = stats.added + stats.updated;
     if (changed > cfg.max_rows_per_run) {
@@ -152,8 +155,12 @@ export default {
 
     if (ctx?.dryRun) {
       log(`would write ${a1(tab, plan.update?.range ?? '(nothing)')}${plan.clear ? ` and clear ${a1(tab, plan.clear)}` : ''}`);
+      for (const c of changes) {
+        const diff = Object.entries(c.changed).map(([col, [from, to]]) => `${col} "${from}" → "${to}"`).join(', ');
+        log(`  update #${c.num} ${c.company} — ${c.role}: ${diff}`);
+      }
       for (const r of values.slice(-Math.min(values.length, stats.added + 2))) {
-        log(`  ${r[2]}  ${r[0]} — ${r[1]}  [${r[7]}]  ${r[3] || '(no resume)'}`);
+        log(`  ${r[2]}  ${r[0]} — ${r[1]}  [${r[7]}]  ${r[5] || '(no location)'}  ${r[3] || '(no resume)'}`);
       }
       log('(--dry-run: sheet not written)');
       return { pushed: 0 };

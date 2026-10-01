@@ -31,6 +31,7 @@ import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'js-yaml';
+import { readMachineSummary } from './lib/report-summary.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const OBS_PATH = join(CAREER_OPS, 'data/salary-observations.tsv');
@@ -115,29 +116,25 @@ export function getStatedObservations(observations, num) {
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
-// Like analyze-patterns.mjs:110 but WITHOUT `json`: analyze-patterns feeds the fence
-// body to a real YAML parser (JSON is a YAML subset, so json fences parse fine there),
-// while yamlStr below only extracts `key: value` lines — a json fence would "match"
-// and silently yield null company/role/advertised_comp. Rejecting it outright means
-// the report falls back to the legacy no-Machine-Summary path instead.
-const FENCE_RE = /##\s*Machine Summary\s*\n+```(?:yaml|yml)?\s*\n([\s\S]*?)\n```/i;
-const yamlStr = (body, key) => {
-  const m = body.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
-  if (!m) return null;
-  const v = m[1].trim().replace(/^["']|["']$/g, '');
-  return v === 'null' || v === '' ? null : v;
+// A Machine Summary scalar as a string. YAML may type a bare value (an
+// unquoted `advertised_comp: 150000` reads as a number); every consumer here
+// works on the text.
+const summaryStr = (summary, key) => {
+  const v = summary[key];
+  if (v === null || v === undefined || typeof v === 'object') return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
 };
 
 // --- Report-derived advertised observations ---
 // Extracts advertised_comp + company + role from one report's Machine Summary.
 // num/date come from the filename ({###}-{slug}-{YYYY-MM-DD}.md).
 export function reportToObservation(content, num, date) {
-  const fence = String(content || '').match(FENCE_RE);
-  if (!fence) return null;
-  const body = fence[1];
-  const company = yamlStr(body, 'company');
-  const role = yamlStr(body, 'role');
-  const adv = yamlStr(body, 'advertised_comp');
+  const summary = readMachineSummary(content);
+  if (!summary) return null;
+  const company = summaryStr(summary, 'company');
+  const role = summaryStr(summary, 'role');
+  const adv = summaryStr(summary, 'advertised_comp');
   // Currency = first standalone UPPERCASE 3-letter token, case-SENSITIVE on
   // purpose: lowercase 3-letter English words in sloppy values ("per", "and")
   // must not register as currencies. Tradeoff: a lowercase "100k eur" yields
@@ -417,7 +414,10 @@ function selfTest() {
   assert(reportToObservation(REPORT_FIXTURE_003, '003', '2026-06-26').observation === null, 'null advertised_comp -> no obs');
   assert(reportToObservation('no machine summary', '009', '2026-06-01') === null, 'no fence -> null');
   const jsonReport = '# Eval: JsonCo — Eng\n\n## Machine Summary\n\n```json\n{"company": "JsonCo", "role": "Eng", "advertised_comp": "100k EUR"}\n```\n';
-  assert(reportToObservation(jsonReport, '010', '2026-06-30') === null, 'json fence rejected (yamlStr cannot extract from JSON — see FENCE_RE comment)');
+  const rJson = reportToObservation(jsonReport, '010', '2026-06-30');
+  assert(rJson?.company === 'JsonCo' && rJson.observation.currency === 'EUR', 'json fence parsed by the shared Machine Summary reader');
+  const bareReport = '# Eval: BareCo — Eng\n\n## Machine Summary\n\n```yaml\ncompany: "BareCo"\nrole: "Eng"\nadvertised_comp: 150000\n```\n';
+  assert(reportToObservation(bareReport, '013', '2026-07-01').observation.amount === '150000', 'a bare numeric advertised_comp is read as text');
   // generic ISO detection: any uppercase 3-letter token, not a hardcoded allowlist
   const plnReport = '# Eval: PlnCo — Eng\n\n## Machine Summary\n\n```yaml\ncompany: "PlnCo"\nrole: "Eng"\nadvertised_comp: "450-500k PLN"\n```\n';
   const rPln = reportToObservation(plnReport, '011', '2026-07-01');

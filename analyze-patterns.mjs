@@ -16,7 +16,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname, relative, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { load as yamlLoad } from 'js-yaml';
+import { readMachineSummary } from './lib/report-summary.mjs';
 import { resolveColumns, parseTrackerRow, normalizeVia } from './tracker-parse.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
@@ -133,22 +133,14 @@ function normalizeScalar(value) {
   return null;
 }
 
+// The fence itself is read by lib/report-summary.mjs; this keeps only the
+// fields the pattern analysis uses.
 function parseMachineSummary(content) {
-  const fenceMatch = content.match(/##\s*Machine Summary\s*\n+```(?:yaml|yml|json)?\s*\n([\s\S]*?)\n```/i);
-  if (!fenceMatch) return null;
-
-  const raw = fenceMatch[1].trim();
-  if (!raw) return null;
-
-  try {
-    const parsed = yamlLoad(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([key]) => MACHINE_SUMMARY_FIELDS.has(key))
-    );
-  } catch {
-    return null;
-  }
+  const parsed = readMachineSummary(content);
+  if (!parsed) return null;
+  return Object.fromEntries(
+    Object.entries(parsed).filter(([key]) => MACHINE_SUMMARY_FIELDS.has(key))
+  );
 }
 
 // --- Via channel analysis (#1596 follow-up) ---
