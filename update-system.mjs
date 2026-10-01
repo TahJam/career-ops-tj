@@ -154,6 +154,7 @@ const SYSTEM_PATHS = [
   'tracker.mjs',
   'find.mjs',
   'verify-pipeline.mjs',
+  'backfill-job-location.mjs',
   'reconcile-pipeline.mjs',
   'dedup-tracker.mjs',
   'add-entry.mjs',
