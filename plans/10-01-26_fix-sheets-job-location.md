@@ -1,8 +1,15 @@
 # Fix job location in the Google Sheets sync (and make location single-sourced)
 
-> **Status: all decisions final 2026-10-01, ready to implement.** Branch `fix-sheet-location` → one PR into
-> `origin/main`. Nothing is implemented yet. See "Resolved decisions" for how each answer shapes the steps,
-> and "Suggested Commit Order" for the commit sequence.
+> **Status: complete 2026-10-01** on `fix-sheet-location` → one PR into `origin/main`. Steps 1-8 landed as
+> commits 2-14 (hashes in "Suggested Commit Order"); the backfill (Step 6) and the live sheet sync (Step 7)
+> are record-only, against gitignored user data.
+>
+> Deviations from the plan as written, all recorded under "Implementation notes":
+> - **`analyze-patterns.mjs` had a fifth copy of the Machine Summary parser** the Context section missed.
+>   Migrated as its own Phase B commit (12b).
+> - **Report 177 repeats `top_strengths`**, which strict YAML parsing rejects. The shared reader lets the
+>   later key win, so `upskill` / `analyze-patterns` now include 177 instead of silently dropping it.
+> - **New files had to be registered in `update-system.mjs` SYSTEM_PATHS**, or a repo test fails.
 
 ## Context
 
@@ -361,23 +368,24 @@ Conventions, taken from this repo's history (e.g. the `plugin-googlesheet` branc
 | # | Commit | Step | Files |
 |---|---|---|---|
 | 0 | `docs(plans): wrote plan to fix job location in Google Sheet sync` ✅ `81cdecd` | — | this plan |
-| 1 | `docs(plans): record decisions and commit order for the location fix` | — | this plan |
+| 1 | `docs(plans): record decisions and commit order for the location fix` ✅ `1dcddab` | — | this plan |
 | | **Phase A — location fix** | | |
-| 2 | `feat(batch-prompt): add work_mode and job_location to the Machine Summary` | 1, 2 | `batch/batch-prompt.md`, `modes/oferta.md` |
-| 3 | `feat(lib): add shared Machine Summary reader with job-location rules` | 3a | `lib/report-summary.mjs`, `tests/fixtures/report-location-cases.json`, `tests/report-summary.test.mjs` |
-| 4 | `feat(verify-pipeline): flag hybrid/onsite reports missing job_location` | 3b | `verify-pipeline.mjs`, `tests/verify-pipeline-job-location.test.mjs` |
-| 5 | `refactor(sheets): generalize overlap updates into owned columns` | 4a | `plugins/sheets/_reconcile.mjs`, tests |
-| 6 | `fix(sheets): write each job's location from its report` | 4b | `plugins/sheets/*`, `config/plugins.example.yml`, tests |
-| 7 | `docs(sheets): redefine column F as the job's location` | 4c | `plans/08-31-26_google-sheets-sync.md`, `plugins/sheets/skill.md` |
-| 8 | `fix(dashboard): read work_mode and job_location from the report` | 5 | `dashboard/internal/data/*` |
-| 9 | `chore: add one-time job-location backfill script` | 6 | `backfill-job-location.mjs` |
-| — | *(no commit)* run the backfill after approving the table | 6 | `reports/*.md` (gitignored) |
-| 10 | `chore: remove the one-time job-location backfill script` | 6 | `backfill-job-location.mjs` |
-| — | *(no commit)* `npm run sheets:sync:dry` → review → `npm run sheets:sync` | 7 | live sheet |
+| 2 | `feat(batch-prompt): add work_mode and job_location to the Machine Summary` ✅ `0163881` | 1, 2 | `batch/batch-prompt.md`, `modes/oferta.md` |
+| 3 | `feat(lib): add shared Machine Summary reader with job-location rules` ✅ `83bcb69` | 3a | `lib/report-summary.mjs`, `tests/fixtures/report-location-cases.json`, `tests/report-summary.test.mjs`, `update-system.mjs` |
+| 4 | `feat(verify-pipeline): flag hybrid/onsite reports missing job_location` ✅ `8298924` | 3b | `verify-pipeline.mjs`, `tests/verify-pipeline-job-location.test.mjs` |
+| 5 | `refactor(sheets): generalize overlap updates into owned columns` ✅ `714bb30` | 4a | `plugins/sheets/_reconcile.mjs` |
+| 6 | `fix(sheets): write each job's location from its report` ✅ `8429216` | 4b | `plugins/sheets/*`, `config/plugins.example.yml`, `tests/sheets-reconcile.test.mjs` |
+| 7 | `docs(sheets): redefine column F as the job's location` ✅ `82d6c4f` | 4c | `plans/08-31-26_google-sheets-sync.md` (`skill.md` never described column F) |
+| 8 | `fix(dashboard): read work_mode and job_location from the report` ✅ `c1f848e` | 5 | `dashboard/internal/data/*`, `dashboard/internal/model/career.go` |
+| 9 | `chore: add one-time job-location backfill script` ✅ `3c1732a` | 6 | `backfill-job-location.mjs`, `update-system.mjs` |
+| — | *(no commit)* backfill run after the table was approved ✅ — 198 reports | 6 | `reports/*.md` (gitignored) |
+| 10 | `chore: remove the one-time job-location backfill script` ✅ `878e99d` | 6 | `backfill-job-location.mjs`, `update-system.mjs` |
+| — | *(no commit)* `npm run sheets:sync:dry` → review → `npm run sheets:sync` ✅ 37 rows updated | 7 | live sheet |
 | | **Phase B — consolidate Machine Summary parsing** | | |
-| 11 | `refactor(verify-pipeline): read the Machine Summary via the shared module` | 8 | `verify-pipeline.mjs` |
-| 12 | `refactor(upskill): read the Machine Summary via the shared module` | 8 | `upskill.mjs` |
-| 13 | `refactor(salary-gap): read the Machine Summary via the shared module` | 8 | `salary-gap.mjs` |
+| 11 | `refactor(verify-pipeline): read the Machine Summary via the shared module` ✅ `4d0ed05` | 8 | `verify-pipeline.mjs` |
+| 12 | `refactor(upskill): read the Machine Summary via the shared module` ✅ `caef9f6` | 8 | `upskill.mjs` |
+| 12b | `refactor(analyze-patterns): read the Machine Summary via the shared module` ✅ `e386d77` | 8 | `analyze-patterns.mjs` (not in the original plan) |
+| 13 | `refactor(salary-gap): read the Machine Summary via the shared module` ✅ `2a94503` | 8 | `salary-gap.mjs` |
 | 14 | `docs(plans): mark the job-location plan complete` | — | this plan |
 
 Notes:
@@ -385,3 +393,37 @@ Notes:
 - Commit 9 is kept and then deleted by commit 10, so the script stays in history (recoverable) without
   living at the repo root.
 - Phase B (11-13) can be dropped from the PR without affecting Phase A.
+
+## Implementation notes
+
+- **Shared reader tolerates duplicated keys.** `readMachineSummary()` loads with js-yaml's `json: true`, so a
+  repeated key overrides instead of throwing. Report 177 repeats `top_strengths`; strict parsing hid its
+  whole fence. The Go twin (`lastKey` in `derive.go`) takes the last match for the same reason, and the
+  shared fixture pins it.
+- **Phase B behavior differences, all on purpose:**
+  - `verify-pipeline` and `salary-gap`: output identical on all 200 local reports.
+  - `upskill` and `analyze-patterns`: the only output change is report 177 now being counted.
+  - `salary-gap`: a ```` ```json ```` fence now parses instead of being rejected, since the rejection
+    existed only because its line regex couldn't read JSON. The self-test assertion was updated to
+    match.
+- **Backfill:** 62 rows were high-confidence from Block A and 136 were resolved by Claude from the
+  evidence (six from the full report: 012, 028, 087, 122, 197, 216). The user decided the two
+  "remote *or* Austin" applications: 072 Dreambase → `onsite` / `Austin, TX`, 210 Gyde → `hybrid` /
+  `Austin, TX`. Rules applied:
+  - Multi-site postings use Austin if listed, else the first site.
+  - Remote roles whose offices only matter to commuters (most Vercel roles) and remote-friendly roles
+    with travel (Anthropic) are `remote_flex`.
+  - Perplexity "onsite/hybrid" rows are `hybrid`, matching its Location Type field.
+- **Sync dry-run after the backfill:** 37 row updates, all column F, no status changes:
+  - 16 remote applications move from `Austin, TX` to `Remote`.
+  - 19 SF / NYC / Santa Clara rows get their real city.
+  - 2 SpaceX rows become `Bastrop, TX`.
+- **Live sync (2026-10-01):** the user ran `npm run sheets:sync`: 84 rows, 0 added, 37 updated, backup at
+  `data/sheet-backups/Apply-2026-2026-10-01T17-12-25-519Z.json`. A follow-up dry-run plans 0 row
+  updates, which confirms the sheet matches the reports.
+- **Out of scope, noted:**
+  - `dashboard/internal/data/career.go` still reads `archetype` / `discard_reasons` with whole-report
+    regexes that aren't scoped to the fence.
+  - `test-all.mjs` "batch prompt CV filenames must carry {{REPORT_NUM}}" was already failing before
+    this branch (from `f0e76ac`).
+  - `config/plugins.yml` still carries an ignored `location_default` key.
