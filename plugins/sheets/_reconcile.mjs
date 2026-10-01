@@ -79,13 +79,14 @@ function applyOwned(row, desired) {
  * @param {{
  *   sheetRows: Array<{ rowNumber: number, cells: string[], link: string|null }>,
  *   trackerRows: Array<Record<string, any>>,
- *   facts: (row: Record<string, any>) => { applyDate: string|null, resume: string|null, url: string|null, referral: boolean, location: string|null },
+ *   facts: (row: Record<string, any>) => { applyDate: string|null, resume: string|null, url: string|null, referral: boolean, location: string|null, locationReason?: string|null },
  *   statusMap: Record<string, string>,
  *   year: number|null,
  * }} input
  * @returns {{ rows: string[][], stats: object, skipped: Array<object>, changes: Array<object>, unlocated: Array<object> }}
  *   changes: one entry per overlap row whose owned columns changed;
- *   unlocated: tracker rows added with a blank Location
+ *   unlocated: synced rows with no usable report location, and why: a new row
+ *   gets a blank Location ('blank'), an existing one keeps the sheet's ('kept')
  */
 export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, year = null }) {
   const skipped = [];
@@ -122,6 +123,7 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, yea
       // A row counts once however many owned columns changed, so
       // max_rows_per_run keeps counting rows.
       const changed = applyOwned(existing, ownedValues(mapped, f.location ?? null));
+      if (!f.location) unlocated.push({ num: t.num, company: t.company, role: t.role, action: 'kept', reason: f.locationReason ?? null });
       if (Object.keys(changed).length) {
         updated++;
         changes.push({ num: t.num, company: existing.company, role: existing.role, changed });
@@ -147,7 +149,7 @@ export function buildDesiredRows({ sheetRows, trackerRows, facts, statusMap, yea
       status: mapped,
     });
     added++;
-    if (!f.location) unlocated.push({ num: t.num, company: t.company, role: t.role });
+    if (!f.location) unlocated.push({ num: t.num, company: t.company, role: t.role, action: 'blank', reason: f.locationReason ?? null });
   }
 
   // 3. Date order. Undated rows sort last but keep their relative order, so a

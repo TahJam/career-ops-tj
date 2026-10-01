@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readMachineSummary, sheetLocation } from '../../lib/report-summary.mjs';
+import { parseMachineSummary, checkJobLocation, sheetLocation } from '../../lib/report-summary.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -104,17 +104,18 @@ function listReports() {
  * so both spellings are accepted.
  *
  * `location` is column F, from the Machine Summary's work_mode / job_location
- * (lib/report-summary.mjs owns the rule). It is null when the report predates
- * those keys or does not exist, which leaves an existing sheet value alone.
+ * (lib/report-summary.mjs owns the rule). When it is null, which leaves an
+ * existing sheet value alone, `locationReason` says why, so the sync log points
+ * at the real problem.
  *
  * @param {number} num
- * @returns {{ url: string|null, pdf: string|null, via: string|null, location: string|null }}
+ * @returns {{ url: string|null, pdf: string|null, via: string|null, location: string|null, locationReason: string|null }}
  */
 export function reportFacts(num) {
   const cached = reportCache.get(num);
   if (cached) return cached;
 
-  const facts = { url: null, pdf: null, via: null, location: null };
+  const facts = { url: null, pdf: null, via: null, location: null, locationReason: 'no report file' };
   const padded = String(num).padStart(3, '0');
   const name = listReports().find(f => f.startsWith(`${padded}-`) || f.startsWith(`${num}-`));
 
@@ -127,13 +128,23 @@ export function reportFacts(num) {
     if (url && /^https?:\/\//i.test(url[1])) facts.url = url[1];
     if (pdf) facts.pdf = path.basename(pdf[1]).replace(/\.pdf$/i, '');
 
-    const summary = readMachineSummary(text);
+    const { status, summary } = parseMachineSummary(text);
     const via = typeof summary?.via === 'string' ? summary.via.trim() : '';
     if (via && !['—', '-'].includes(via)) facts.via = via;
     facts.location = sheetLocation(summary);
+    facts.locationReason = facts.location ? null : locationReason(status, summary);
   }
   reportCache.set(num, facts);
   return facts;
+}
+
+/** Why a report yields no column F value. Callers pass a report that exists. */
+export function locationReason(status, summary) {
+  if (status === 'none') return 'the report has no Machine Summary';
+  if (status === 'unparseable') return 'the Machine Summary does not parse';
+  const { state, reason } = checkJobLocation(summary);
+  if (state === 'missing') return 'the report has no work_mode / job_location';
+  return reason ?? 'the report location is invalid';
 }
 
 /** Test seam: forget cached report lookups. */

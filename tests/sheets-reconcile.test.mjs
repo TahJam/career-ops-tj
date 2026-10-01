@@ -196,7 +196,7 @@ console.log('\nsheets reconciler — career-ops owns Location (plans/10-01-26_fi
     { num: 241, company: 'Unknown Co', role: 'Eng', date: '2026-10-01', status: 'Applied' },
   ];
   const locations = { 229: 'Remote', 150: null, 231: 'Remote', 240: 'Austin, TX', 241: null };
-  const facts = (t) => ({ ...noFacts(), location: locations[t.num] });
+  const facts = (t) => ({ ...noFacts(), location: locations[t.num], locationReason: locations[t.num] ? null : 'the report has no work_mode / job_location' });
   const { rows, stats, changes, unlocated } = buildDesiredRows({
     sheetRows, trackerRows, facts, statusMap: STATUS_MAP, year: 2026,
   });
@@ -213,8 +213,11 @@ console.log('\nsheets reconciler — career-ops owns Location (plans/10-01-26_fi
     JSON.stringify(changes.find(c => c.num === 229)?.changed) === JSON.stringify({ location: [LOC, 'Remote'] }));
   ok('an unchanged overlap row is not reported as a change', !changes.some(c => c.num === 150));
   ok('a new row gets its report location', row('New Co')[5] === 'Austin, TX');
-  ok('a new row with no known location gets a blank cell, never a guessed default',
-    row('Unknown Co')[5] === '' && unlocated.length === 1 && unlocated[0].num === 241);
+  ok('a new row with no known location gets a blank cell, never a guessed default', row('Unknown Co')[5] === '');
+  ok('every row without a usable location is reported with what happened to its cell',
+    JSON.stringify(unlocated.map(u => [u.num, u.action]).sort()) === JSON.stringify([[150, 'kept'], [241, 'blank']]));
+  ok('and with the reason, so the log does not blame missing keys for every cause',
+    unlocated.every(u => u.reason === 'the report has no work_mode / job_location'));
   ok('a location-only change defeats the no-op gate', planIsNoOp(current, rows) === false);
 
   const settled = buildDesiredRows({
@@ -227,4 +230,19 @@ console.log('\nsheets reconciler — career-ops owns Location (plans/10-01-26_fi
   });
   ok('once the sheet holds the report locations, the next run is a no-op',
     settled.stats.updated === 0 && settled.changes.length === 0);
+}
+
+console.log('\nsheets sources — why a report yields no location (PR #4 review [7])');
+{
+  const { locationReason } = await import('../plugins/sheets/_sources.mjs');
+  const { parseMachineSummary } = await import('../lib/report-summary.mjs');
+  const why = (text) => { const p = parseMachineSummary(text); return locationReason(p.status, p.summary); };
+  const fence = (body) => `## Machine Summary\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+  ok('a gate-skip note: no Machine Summary', why('# R\n\n## Skip note\n') === 'the report has no Machine Summary');
+  ok('an unreadable fence: does not parse', why(fence('{{{')) === 'the Machine Summary does not parse');
+  ok('a pre-backfill report: no keys', why(fence('company: "Acme"')) === 'the report has no work_mode / job_location');
+  ok('an onsite report without a city: the rule it broke',
+    why(fence('work_mode: "onsite"\njob_location: null')) === 'onsite role has no job_location');
+  ok('a placeholder location: the rule it broke',
+    /placeholder/.test(why(fence('work_mode: "onsite"\njob_location: "TBD"'))));
 }

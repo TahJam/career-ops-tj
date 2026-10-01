@@ -123,6 +123,7 @@ export default {
         url: rf.url,
         referral: isReferral(row, rf),
         location: rf.location,
+        locationReason: rf.locationReason,
       };
     };
 
@@ -142,7 +143,10 @@ export default {
 
     log(`plan: ${stats.total} row(s) — ${stats.fromSheet} existing, ${stats.added} added, ${stats.updated} row update(s)`);
     for (const s of skipped) log(`  skipped #${s.num} ${s.company}: ${s.reason}`);
-    for (const u of unlocated) log(`  no location for #${u.num} ${u.company} — ${u.role}: its report has no work_mode / job_location, column F left blank`);
+    for (const u of unlocated) {
+      const effect = u.action === 'kept' ? 'kept the sheet\'s column F' : 'column F left blank';
+      log(`  no location for #${u.num} ${u.company} — ${u.role}: ${u.reason ?? 'unknown'}; ${effect}`);
+    }
 
     const changed = stats.added + stats.updated;
     if (changed > cfg.max_rows_per_run) {
