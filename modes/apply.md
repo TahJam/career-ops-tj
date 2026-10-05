@@ -149,6 +149,9 @@ Identify ALL visible questions:
 - Yes/No (relocation, visa, etc.)
 - Salary fields (range, expectation)
 - Upload fields (resume, cover letter PDF)
+  - For a resume upload, point to the report's tailored PDF. If the user wants it under their fixed upload
+    name, offer `npm run export-cv {NNN}` (copies to `cv.export_path`; ask first, since it replaces that
+    file). Never upload files yourself.
 
 Classify each question:
 - **Already answered in Section H or `## Application Answers`** → adapt the existing response

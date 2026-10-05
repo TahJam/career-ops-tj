@@ -337,3 +337,12 @@ Do not auto-generate the cover letter PDF without going through the interactive 
 ## Post-generation
 
 Update tracker if the job is already registered: change PDF from ❌ to ✅.
+
+If `cv.export_path` is set in `config/profile.yml` and the PDF was generated with `--report`, offer the
+upload-ready copy:
+
+> "Want a copy at your upload path (`{cv.export_path}`)? This replaces the file currently there."
+
+On yes, run `npm run export-cv {NNN}` and relay its output (report, source, destination, and whether it
+replaced a file). Never run it without asking: it overwrites the file at that path. If `cv.export_path` isn't
+set, mention the option once (`npm run export-cv {NNN} -- --out=<path>`) and don't ask again.
