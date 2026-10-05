@@ -681,14 +681,16 @@ process_offer() {
             const status = typeof obj.status === "string" ? obj.status : "";
             const error = typeof obj.error === "string" ? obj.error : "";
             const score = typeof obj.score === "number" ? String(obj.score) : "";
-            process.stdout.write(status + "\t" + error + "\t" + score);
+            process.stdout.write(status + "\x1f" + error + "\x1f" + score);
           } catch {
             process.stdout.write("");
           }
         });
       ' 2>/dev/null || true)
       if [[ -n "$parsed" ]]; then
-        IFS=$'\t' read -r parsed_status parsed_error parsed_score <<< "$parsed"
+        # \x1f, not \t: tab is IFS whitespace, so `read` would collapse the
+        # empty error field on success and shift the score into parsed_error.
+        IFS=$'\x1f' read -r parsed_status parsed_error parsed_score <<< "$parsed"
         if [[ "$parsed_status" == "failed" ]]; then
           worker_failed_match="failed"
           worker_error_match="$parsed_error"
