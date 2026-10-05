@@ -85,6 +85,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `interview-prep/story-bank.md` | Accumulated STAR+R stories, built up via `interview-prep` runs (not at evaluation time) |
 | `interview-prep/{company}-{role}.md` | Company-specific interview intel reports |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
+| `export-cv.mjs` | Copies a report's tailored CV PDF (from `data/pdf-index.tsv`) to a fixed upload path — `cv.export_path` in `config/profile.yml`, or `npm run export-cv <report#> -- --out=<path>`; never modifies the source |
 | `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |
 | `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever APIs directly, zero LLM cost |
 | `scan-ats-full.mjs` | Reverse-ATS keyword-first scanner over full public ATS datasets (Greenhouse/Lever/Ashby/Workday/iCIMS), filtered by portals.yml `title_filter`/`location_filter` — no company list needed; checkpoints every 500 companies, `--resume` continues an interrupted sweep |

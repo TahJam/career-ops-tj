@@ -124,6 +124,10 @@ spend_tier: standard
 
 cv:
   output_format: "html" # "html" (default) or "latex"
+  # (Optional) Where `npm run export-cv <report#>` copies that report's tailored
+  # CV PDF, e.g. a fixed name to upload to application forms. Relative paths
+  # resolve against the career-ops root. Override per run with `-- --out=<path>`.
+  # export_path: "../Resume.pdf"
   # (Optional) Canva resume design ID for visual CV generation via /career-ops pdf.
   # Find it in your Canva design URL: https://www.canva.com/design/DAxxxxxxx/...
   # The ID starts with "D" and is 11 characters long.

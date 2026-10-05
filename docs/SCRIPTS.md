@@ -32,6 +32,7 @@ All scripts live in the project root as `.mjs` modules. Most are exposed via
 | `npm run validate:portals` | `validate-portals.mjs` | Validate portals.yml shape before scanning |
 | `npm run tracker` | `tracker.mjs` | SQLite derived index over applications.md — sync/query/history/export |
 | `npm run find` | `find.mjs` | Resolve a report#/tracker#/company query to its full pipeline identity |
+| `npm run export-cv` | `export-cv.mjs` | Copy a report's tailored CV PDF to a fixed upload path (`cv.export_path` or `--out`) |
 | `npm run invite-match` | `invite-match.mjs` | Fuzzy-match a pasted interview-invite email against `data/applications.md` |
 | `npm run application:init` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle |
 | `npm run paste-reply` | `paste-reply.mjs` | Manual/no-Gmail input into the `reply-watch.mjs` classification pipeline |
@@ -639,6 +640,31 @@ node find.mjs acme --json       # machine-readable output
 Multiple matches print as a table; zero matches print a clean message.
 
 **Exit codes:** `0` at least one match, `1` no match, missing query, or no `applications.md`.
+
+---
+
+## export-cv
+
+Copies the tailored CV PDF that `data/pdf-index.tsv` records for a report to one fixed file name, ready to upload to an application form. The destination is `cv.export_path` in `config/profile.yml`, or a `--out` override. The source PDF in `output/` is never modified.
+
+```bash
+npm run export-cv 248                          # → cv.export_path from config/profile.yml
+npm run export-cv 248 -- --out=/tmp/Resume.pdf # one-off destination
+node export-cv.mjs 248 --out ~/Desktop/Resume.pdf
+```
+
+```yaml
+# config/profile.yml
+cv:
+  export_path: "../Resume.pdf"   # relative to the career-ops root
+```
+
+- `cv.export_path` resolves against the career-ops root, so it means the same thing wherever you run it. `--out` resolves against the directory you typed the command in.
+- An existing destination file is replaced, and the output says `(replaced existing file)`.
+- **Put `--` before `--out` under npm.** Without it npm swallows the flag. The script detects that (`npm_config_out`) and refuses rather than silently writing to the profile path.
+- Refuses when the report has no indexed PDF, the indexed file is missing on disk, the destination directory doesn't exist, the destination is a directory, or the destination is the source itself.
+
+**Exit codes:** `0` copied, `1` any refusal above, a bad report number, or no destination configured.
 
 ---
 
