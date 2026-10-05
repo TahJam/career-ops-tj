@@ -232,6 +232,7 @@ Default modes are in `modes/` (English). This fork removed the 16 non-English la
 | Wants to debrief after a real interview and close gaps | `interview/debrief` |
 | Wants to check if a company is safe to join (red-flag analysis) | `interview-redflag` |
 | Wants to generate CV/PDF | `pdf` |
+| Wants a fixed-name copy of a tailored CV to upload ("copy report 248's CV to my resume file") | run `npm run export-cv <report#>` (destination: `cv.export_path`, or `-- --out=<path>`); confirm first, since it replaces the destination file |
 | Wants the LaTeX/Overleaf CV path | `latex` |
 | Maintains their own hand-tuned `.tex` CV and wants it tailored in place (opt-in; cv.md stays the default) | `latex-tex` |
 | Wants a cover letter | `cover` |
