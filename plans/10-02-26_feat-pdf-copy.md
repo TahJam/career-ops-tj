@@ -1,6 +1,7 @@
 # Copy a report's tailored CV PDF to a fixed upload path (`export-cv.mjs`)
 
-> **Status: planned 2026-10-05.** Not started. Branch `feat-export-cv` → one PR into `origin/main`.
+> **Status: complete 2026-10-05** on `feat-export-cv` → one PR into `origin/main`. Commits 3 and 4 landed as
+> one commit (tests plus implementation), as anticipated. Deviations are under "Implementation notes".
 
 ## Request (original notes)
 
@@ -139,11 +140,11 @@ sandbox index can carry absolute tmp paths.
 
 | # | Commit | Files |
 |---|---|---|
-| 1 | `docs(plans): plan export-cv for copying a report's CV PDF` | plan (user's file, no trailer) |
-| 2 | `refactor(find): export normNum for reuse` | `find.mjs` |
-| 3 | `test(export-cv): cover report lookup, destination rules, and CLI guards` | `tests/export-cv.test.mjs` (fails until 4, so squash with 4 if every commit must stay green) |
-| 4 | `feat(export-cv): copy a report's tailored CV PDF to a configured path` | `export-cv.mjs`, `package.json`, `update-system.mjs` |
-| 5 | `docs: document export-cv and cv.export_path` | `docs/SCRIPTS.md`, `DATA_CONTRACT.md`, `AGENTS.md`, `config/profile.example.yml` |
+| 1 `ef45b7e` | `docs(plans): plan export-cv for copying a report's CV PDF` | plan (user's file, no trailer) |
+| 2 `63bfc44` | `refactor(find): export normNum for reuse` | `find.mjs` |
+| 3 → 4 | `test(export-cv): cover report lookup, destination rules, and CLI guards` | `tests/export-cv.test.mjs` (fails until 4, so squash with 4 if every commit must stay green) |
+| 4 `99ed3c3` | `feat(export-cv): copy a report's tailored CV PDF to a configured path` | `export-cv.mjs`, `package.json`, `update-system.mjs` |
+| 5 `6683474` | `docs: document export-cv and cv.export_path` | `docs/SCRIPTS.md`, `DATA_CONTRACT.md`, `AGENTS.md`, `config/profile.example.yml` |
 | 6 | `docs(plans): record export-cv implementation` | plan |
 
 Since each commit has to leave `test-all.mjs` passing, commits 3 and 4 will most likely be **one commit** (tests
@@ -151,4 +152,18 @@ plus implementation).
 
 ## Implementation notes
 
-_(filled in as work lands)_
+- **The test-first step caught one gap the plan missed.** A trailing `--out` with no value parsed as
+  `undefined`, so it silently fell back to the profile path, the same failure D1 guards against. A
+  "valueless `--out`" test was added (it went red), then the fix: `args[++i] ?? ''` hits the empty-path error.
+- **The source date was dropped from the output line.** `parsePdfIndex` returns only the path, and the date is
+  already in the CV filename. The line prints size only.
+- **Personal-data test:** the plan's sample output first contained a literal home-directory path, which
+  `test-all.mjs` flags as an absolute path. It was replaced with `<absolute path>` and squashed into commit 1.
+- **A pre-existing failure, unrelated to this branch:** `test-all.mjs:2730` ("batch prompt CV filenames must
+  carry {{REPORT_NUM}}") fails on `main` too. `batch/batch-prompt.md` no longer contains the
+  `output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html` string the test asserts, most likely since `f0e76ac`.
+  It's left for its own fix. The suite is otherwise green (2947 passed).
+- **User config (gitignored):** `config/profile.yml` `cv.export_path: "../Resume-Taher-Jamali.pdf"` is set.
+- **Verified live:** `npm run export-cv 248 -- --out=<scratch>/x.pdf` produced a file identical to the source
+  (`cmp`). The no-`--` form refused with exit 1. Report 9999 refused with exit 1. The real
+  `../Resume-Taher-Jamali.pdf` hasn't been overwritten yet: that's the user's call.
