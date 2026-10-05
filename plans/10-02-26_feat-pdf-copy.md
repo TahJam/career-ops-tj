@@ -197,6 +197,15 @@ Fixed in `87a94d7`, test-first (5 new checks, 25 total):
   `cv.export_path` and `--out`. The "destination is a directory" test now uses a directory named `folder.pdf`,
   since a plain directory name is refused earlier.
 
-Not fixed, by the user's call (low impact): [3] `INIT_CWD` honored outside npm, [4] `~` not expanded,
-[5] raw stack trace on copy I/O errors, [6] case-alias same-file guard, [7] `--report N` hint syntax,
-[8] `--out=true` message, [9] `normNum` duplicated in `generate-pdf.mjs` and the spacing nit.
+Fixed in `e652fe6`, test-first (2 new checks plus a tightened one, 27 total):
+
+- **[3] Inherited npm env.** `INIT_CWD` and `npm_config_out` are now honored only when
+  `npm_lifecycle_event === 'export-cv'`, so a direct `node export-cv.mjs` run resolves `--out` against its real
+  cwd. The test helper simulates `npm run` by default (`npm_lifecycle_event` + `INIT_CWD`). Verified live: a
+  relative `--out` from another directory under `npm --prefix … run export-cv` still lands in the typing
+  directory.
+- **[7] Hint syntax.** The no-indexed-PDF error now gives `node generate-pdf.mjs <cv.html> <cv.pdf> --report=N`.
+
+Not fixed, by the user's call (low impact): [4] `~` not expanded, [5] raw stack trace on copy I/O errors,
+[6] case-alias same-file guard, [8] `--out=true` message, [9] `normNum` duplicated in `generate-pdf.mjs` and
+the spacing nit.
