@@ -107,7 +107,7 @@ career-ops is the first reference implementation of [the CareerOps Manifesto](ht
 | **A-G Evaluation**       | Role summary, CV match, level strategy, comp research, personalization, interview prep (STAR+R) -- plus a Block G posting-legitimacy check that flags scams and ghost jobs, and a Work-Auth signal that flags an explicit no-sponsorship JD as a hard blocker |
 | **Interview Story Bank** | Accumulates STAR+Reflection stories across evaluations -- 5-10 master stories that answer any behavioral question                        |
 | **Negotiation Scripts**  | Salary negotiation frameworks, geographic discount pushback, competing offer leverage                                                    |
-| **ATS PDF Generation**   | Keyword-injected CVs in the [Jake's Resume](https://github.com/jakegut/resume) layout                                                                                 |
+| **ATS PDF Generation**   | Keyword-injected CVs in the [Jake's Resume](https://github.com/jakegut/resume) layout. `npm run export-cv <report#>` copies a report's tailored PDF to one fixed, upload-ready file name (`cv.export_path` in `config/profile.yml`) |
 | **Cover Letter Generator** | Research-backed cover letters with keyword mirroring, four interactive angle prompts (why/problems/approach/tone), draft-in-chat approval gate, and A4 PDF via the same HTML + Playwright pipeline as CVs. Auto-drafts on every evaluation; complete and generate on demand via `/career-ops cover` |
 | **Application Email Drafts** | Formal recruiter/referral/cold application emails from a report or pasted JD, with subject line, attachment checklist, source-backed fit points, and a profile-driven contact block. Draft-only -- career-ops never sends, submits, or clicks anything. |
 | **Portal Scanner**       | 100+ companies pre-configured (Anthropic, OpenAI, ElevenLabs, Retool, n8n...) + custom queries across Ashby, Greenhouse, Lever, Wellfound |
@@ -222,6 +222,18 @@ career-ops uses a shared command router. In CLIs that register slash commands, i
 ```
 
 Or just paste a job URL or description directly -- career-ops auto-detects it and runs the full pipeline.
+
+### Upload-ready CV copy
+
+Tailored CVs are saved per report (`output/cv-{you}-{company}-{NNN}-{date}.pdf`). To upload one under a
+clean, fixed name, set `cv.export_path` in `config/profile.yml` and run:
+
+```bash
+npm run export-cv 248                              # copy report 248's CV to cv.export_path
+npm run export-cv 248 -- --out ~/Desktop/CV.pdf    # one-off destination (note the `--`)
+```
+
+The original PDF is never modified. See [docs/SCRIPTS.md](docs/SCRIPTS.md#export-cv).
 
 ## How It Works
 
