@@ -104,6 +104,46 @@ if (mod) {
     if (error instanceof ExportError) pass(`rejects non-numeric report "${bad}"`);
     else fail(`non-numeric report "${bad}" should throw ExportError`);
   }
+
+  {
+    // Given a report whose index row was taken over by its cover letter
+    // (generate-cover-letter.mjs --report NNN replaces the CV's row)
+    const coverIndex = new Map([['94', 'output/lightspeed-systems-software-engineer-cover.pdf']]);
+    const { error } = attempt({ report: '94', pdfIndex: coverIndex, exportPath: '/x.pdf' });
+    // Then it refuses instead of uploading a cover letter as the resume
+    if (error instanceof ExportError && /cover letter/i.test(error.message) && /--report=94/.test(error.message)) {
+      pass('refuses when the indexed PDF is a cover letter, with the --report= regenerate hint');
+    } else {
+      fail(`cover-letter row should throw naming the cover letter and --report=94: ${error?.message}`);
+    }
+  }
+
+  {
+    // Given CVs whose names merely contain "cover" (company "Cover Genius") or skip the cv- prefix
+    const cvIndex = new Map([
+      ['12', 'output/cv-jane-cover-genius-12-2026-10-01.pdf'],
+      ['183', 'output/taherjamali-vercel-183-2026-09-11.pdf'],
+    ]);
+    const a = attempt({ report: '12', pdfIndex: cvIndex, exportPath: '/x.pdf' });
+    const b = attempt({ report: '183', pdfIndex: cvIndex, exportPath: '/x.pdf' });
+    if (a.result && b.result) pass('accepts CVs named after a "Cover…" company or without a cv- prefix');
+    else fail(`CV names wrongly refused: ${a.error?.message} / ${b.error?.message}`);
+  }
+
+  {
+    // Given destinations that aren't .pdf files (a profile typo could name cv.md)
+    const bad = ['notes.md', 'config/profile.yml', '../Resume'];
+    const errors = bad.map((p) => attempt({ report: '248', exportPath: p }).error);
+    const outErr = attempt({ report: '248', exportPath: '/x.pdf', out: 'cv.md' }).error;
+    if (errors.every((e) => e instanceof ExportError && /\.pdf/.test(e.message)) && outErr instanceof ExportError) {
+      pass('refuses non-.pdf destinations from cv.export_path and --out');
+    } else {
+      fail(`non-.pdf destination should throw: ${JSON.stringify(errors.map((e) => e?.message))} / ${outErr?.message}`);
+    }
+    const upper = attempt({ report: '248', exportPath: '../Resume.PDF' });
+    if (upper.result) pass('accepts an upper-case .PDF extension');
+    else fail(`upper-case .PDF wrongly refused: ${upper.error?.message}`);
+  }
 }
 
 // ── CLI (sandboxed) ──────────────────────────────────────────────────
@@ -226,10 +266,24 @@ if (mod) {
     else fail(`CLI missing-dest-dir wrong: code=${r.code}\n${r.stdout}${r.stderr}`);
   });
 
-  withSandbox({ exportPath: 'dest' }, (sb) => {
+  withSandbox({ exportPath: 'folder.pdf' }, (sb) => {
+    // A directory that happens to end in .pdf gets past the extension check
+    mkdirSync(join(sb.dir, 'folder.pdf'));
     const r = runExport(['248'], sb);
     if (r.code !== 0 && /director/i.test(r.stderr)) pass('CLI errors when the destination is a directory');
     else fail(`CLI dest-is-dir wrong: code=${r.code}\n${r.stdout}${r.stderr}`);
+  });
+
+  withSandbox({ exportPath: 'dest/notes.md' }, (sb) => {
+    // Given a profile typo pointing at an existing non-PDF file
+    const notes = join(sb.dir, 'dest', 'notes.md');
+    writeFileSync(notes, '# my notes\n');
+    const r = runExport(['248'], sb);
+    if (r.code !== 0 && readFileSync(notes, 'utf-8') === '# my notes\n') {
+      pass('CLI refuses a non-.pdf destination and leaves that file untouched');
+    } else {
+      fail(`CLI non-.pdf destination wrong: code=${r.code}\n${r.stdout}${r.stderr}`);
+    }
   });
 
   withSandbox({ exportPath: 'src/cv-248.pdf' }, (sb) => {

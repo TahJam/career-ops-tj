@@ -25,7 +25,7 @@
  */
 
 import { readFileSync, existsSync, statSync, realpathSync, copyFileSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { basename, dirname, extname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'js-yaml';
 import { parsePdfIndex, normNum } from './find.mjs';
@@ -68,6 +68,16 @@ export function resolveExport({ report, pdfIndex, exportPath, out, root, cwd }) 
       `Report ${reportNum} has no PDF in data/pdf-index.tsv. ` +
       `Generate one with \`npm run pdf\` (passing --report ${reportNum}), or check the number with \`npm run find ${reportNum}\`.`);
   }
+  // generate-cover-letter.mjs --report NNN writes a report-keyed row too, and the
+  // manifest keeps one row per report, so the cover letter can replace the CV's
+  // row. Cover letters are always named *-cover.pdf (generator default and
+  // modes/cover.md), so match that suffix, not any "cover" in a company name.
+  if (/-cover\.pdf$/i.test(basename(pdfPath))) {
+    throw new ExportError(
+      `Report ${reportNum}'s indexed PDF is a cover letter (${pdfPath}), not the CV. ` +
+      `Generating the cover letter with --report replaced the CV's row in data/pdf-index.tsv. ` +
+      `Regenerate the CV with \`node generate-pdf.mjs <cv.html> <cv.pdf> --report=${reportNum}\`, then export again.`);
+  }
 
   let dest;
   let destSource;
@@ -81,6 +91,12 @@ export function resolveExport({ report, pdfIndex, exportPath, out, root, cwd }) 
     throw new ExportError(
       'No destination: set `cv.export_path` in config/profile.yml ' +
       '(e.g. export_path: "../Resume.pdf"), or pass `-- --out=<path>`.');
+  }
+  // An existing destination gets replaced, so a typo like export_path: "cv.md"
+  // would overwrite a user-layer file with PDF bytes. Only write .pdf paths.
+  if (extname(dest).toLowerCase() !== '.pdf') {
+    throw new ExportError(
+      `Destination ${dest} (from ${destSource === '--out' ? '--out' : 'cv.export_path'}) must be a .pdf file path.`);
   }
 
   return { reportNum, pdfPath, src: resolve(root, pdfPath), dest, destSource };

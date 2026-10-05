@@ -662,7 +662,7 @@ cv:
 - `cv.export_path` resolves against the career-ops root, so it means the same thing wherever you run it. `--out` resolves against the directory you typed the command in.
 - An existing destination file is replaced, and the output says `(replaced existing file)`.
 - **Put `--` before `--out` under npm.** Without it npm swallows the flag. The script detects that (`npm_config_out`) and refuses rather than silently writing to the profile path.
-- Refuses when the report has no indexed PDF, the indexed file is missing on disk, the destination directory doesn't exist, the destination is a directory, or the destination is the source itself.
+- Refuses when the report has no indexed PDF, the indexed PDF is a cover letter (`*-cover.pdf`: generating a cover letter with `--report` replaces the CV's index row, so regenerate the CV with `--report=NNN`), the indexed file is missing on disk, the destination isn't a `.pdf` path, the destination directory doesn't exist, the destination is a directory, or the destination is the source itself.
 
 **Exit codes:** `0` copied, `1` any refusal above, a bad report number, or no destination configured.
 
