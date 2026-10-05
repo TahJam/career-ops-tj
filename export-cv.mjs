@@ -16,7 +16,8 @@
  *
  * Path rules: `cv.export_path` resolves against the career-ops root, so it
  * means the same thing wherever the command runs. `--out` resolves against the
- * directory the command was typed in (INIT_CWD under npm, else cwd). An
+ * directory the command was typed in (INIT_CWD under `npm run export-cv`, else
+ * cwd; an INIT_CWD inherited by a direct `node` run is ignored). An
  * existing destination file is replaced, and the output says so.
  *
  * Env overrides (tests): CAREER_OPS_PROFILE, CAREER_OPS_PDF_INDEX.
@@ -66,7 +67,8 @@ export function resolveExport({ report, pdfIndex, exportPath, out, root, cwd }) 
   if (!pdfPath) {
     throw new ExportError(
       `Report ${reportNum} has no PDF in data/pdf-index.tsv. ` +
-      `Generate one with \`npm run pdf\` (passing --report ${reportNum}), or check the number with \`npm run find ${reportNum}\`.`);
+      `Generate one with \`node generate-pdf.mjs <cv.html> <cv.pdf> --report=${reportNum}\` (the pdf mode passes it), ` +
+      `or check the number with \`npm run find ${reportNum}\`.`);
   }
   // generate-cover-letter.mjs --report NNN writes a report-keyed row too, and the
   // manifest keeps one row per report, so the cover letter can replace the CV's
@@ -164,10 +166,15 @@ function checkPaths({ pdfPath, src, dest }) {
 }
 
 function main() {
+  // INIT_CWD and npm_config_* are inherited by every child process, so trust
+  // them only when npm is running this script, not a direct `node export-cv.mjs`
+  // from a shell that some unrelated npm/npx process started elsewhere.
+  const viaNpm = process.env.npm_lifecycle_event === 'export-cv';
+
   // `npm run export-cv 248 --out=x` (no `--`) hands --out to npm, which drops it
   // from argv and exposes it only as npm_config_out. Falling back to the profile
   // path would silently overwrite the wrong file, so refuse.
-  if (process.env.npm_config_out) {
+  if (viaNpm && process.env.npm_config_out) {
     throw new ExportError(
       `npm swallowed --out=${process.env.npm_config_out}: put \`--\` before it, ` +
       'e.g. `npm run export-cv 248 -- --out=<path>`. Nothing was copied.');
@@ -189,7 +196,7 @@ function main() {
     exportPath: out ? undefined : readExportPath(profilePath),
     out,
     root: ROOT,
-    cwd: process.env.INIT_CWD || process.cwd(),
+    cwd: (viaNpm && process.env.INIT_CWD) || process.cwd(),
   });
   checkPaths(plan);
 

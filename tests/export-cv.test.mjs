@@ -83,8 +83,8 @@ if (mod) {
 
   {
     const { error } = attempt({ report: '999', exportPath: '/x.pdf' });
-    if (error instanceof ExportError && /999/.test(error.message)) {
-      pass('errors when the report has no indexed PDF, naming the report');
+    if (error instanceof ExportError && /999/.test(error.message) && /--report=999/.test(error.message)) {
+      pass('errors when the report has no indexed PDF, naming the report and the --report= form');
     } else {
       fail(`unindexed report should throw ExportError naming 999: ${error?.message}`);
     }
@@ -168,13 +168,23 @@ function makeSandbox({ exportPath = 'dest/Resume.pdf', indexPdf = 'src/cv-248.pd
 }
 
 // Run export-cv.mjs against a sandbox. Returns { code, stdout, stderr }.
-function runExport(args, sb, extraEnv = {}) {
-  const env = { ...process.env, CAREER_OPS_PROFILE: sb.profile, CAREER_OPS_PDF_INDEX: sb.index, INIT_CWD: sb.dir };
+// By default it looks like `npm run export-cv` typed in the sandbox dir
+// (npm_lifecycle_event + INIT_CWD). An extraEnv value of undefined removes
+// that variable, e.g. to simulate a direct `node export-cv.mjs` run.
+function runExport(args, sb, extraEnv = {}, { cwd = ROOT } = {}) {
+  const env = {
+    ...process.env,
+    CAREER_OPS_PROFILE: sb.profile, CAREER_OPS_PDF_INDEX: sb.index,
+    INIT_CWD: sb.dir, npm_lifecycle_event: 'export-cv',
+  };
   delete env.npm_config_out; // test-all may itself run under npm
-  Object.assign(env, extraEnv);
+  for (const [k, v] of Object.entries(extraEnv)) {
+    if (v === undefined) delete env[k];
+    else env[k] = v;
+  }
   try {
     const stdout = execFileSync(NODE, [join(ROOT, 'export-cv.mjs'), ...args], {
-      cwd: ROOT, env, encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'],
+      cwd, env, encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'],
     });
     return { code: 0, stdout, stderr: '' };
   } catch (e) {
@@ -230,6 +240,29 @@ if (mod) {
       pass('CLI --out=<p> and --out <p> write to INIT_CWD-relative paths, not the profile path');
     } else {
       fail(`CLI --out wrong: a=${a.code} b=${b.code}\n${a.stderr}${b.stderr}`);
+    }
+  });
+
+  withSandbox({}, (sb) => {
+    // Given a direct `node export-cv.mjs` run (not via npm) that inherited a
+    // stale INIT_CWD from some npm/npx parent process
+    const here = join(sb.dir, 'dest');
+    const r = runExport(['248', '--out=direct.pdf'], sb, { npm_lifecycle_event: undefined }, { cwd: here });
+    // Then --out resolves against the real cwd, not the stale INIT_CWD
+    if (r.code === 0 && existsSync(join(here, 'direct.pdf')) && !existsSync(join(sb.dir, 'direct.pdf'))) {
+      pass('direct node run resolves --out against cwd, ignoring an inherited INIT_CWD');
+    } else {
+      fail(`direct-run INIT_CWD wrong: code=${r.code}\n${r.stdout}${r.stderr}`);
+    }
+  });
+
+  withSandbox({}, (sb) => {
+    // Given a direct run that inherited npm_config_out from an unrelated npm parent
+    const r = runExport(['248'], sb, { npm_lifecycle_event: undefined, npm_config_out: '/tmp/stale.pdf' });
+    if (r.code === 0 && existsSync(join(sb.dir, 'dest', 'Resume.pdf'))) {
+      pass('direct node run ignores an inherited npm_config_out');
+    } else {
+      fail(`direct-run npm_config_out wrong: code=${r.code}\n${r.stdout}${r.stderr}`);
     }
   });
 
