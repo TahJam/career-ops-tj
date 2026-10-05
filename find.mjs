@@ -34,7 +34,8 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 
 // "008" and "8" are the same report — zero-padded report-link form vs unpadded
 // tracker-# form (same normalization as the manifest writer in generate-pdf.mjs).
-const normNum = (s) => String(s ?? '').trim().replace(/^0+(?=\d)/, '');
+// Exported so lookups into parsePdfIndex() keys use the same rule (export-cv.mjs).
+export const normNum =(s) => String(s ?? '').trim().replace(/^0+(?=\d)/, '');
 
 // Same status hygiene as tracker.mjs: strip markdown bold and stray dates so a
 // messy cell still prints as its canonical label.
