@@ -153,6 +153,7 @@ const SYSTEM_PATHS = [
   'tracker-links.mjs',
   'tracker.mjs',
   'find.mjs',
+  'export-cv.mjs',
   'verify-pipeline.mjs',
   'reconcile-pipeline.mjs',
   'dedup-tracker.mjs',
