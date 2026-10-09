@@ -8957,6 +8957,61 @@ try {
   fail(`merge-tracker report-number refusal test crashed: ${e.message}`);
 }
 
+// ── MERGE-TRACKER RE-EVALUATION UNDER A NEW REPORT NUMBER ────────
+// Re-evaluating an existing company+role (same exact title, higher score)
+// under a NEW report number updates the existing row in place. The row must
+// keep its own # AND its own report link — the # is that report's number
+// (verify-pipeline Check 14) and status-log / follow-up entries are keyed on
+// it — with the new report linked from the note. Writing the new link onto
+// the old # made `set-status <old#>` not-found and `set-status <new#>` write
+// to the old row (PR #7 review [1]).
+console.log('\n🧪 Testing merge-tracker re-evaluation under a new report number...');
+try {
+  const reTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-reeval-'));
+  try {
+    mkdirSync(join(reTmp, 'data'));
+    mkdirSync(join(reTmp, 'reports'));
+    const reAdditions = join(reTmp, 'additions');
+    mkdirSync(reAdditions);
+    for (const r of ['010-acme-2026-09-01.md', '050-acme-2026-10-01.md']) writeFileSync(join(reTmp, 'reports', r), '# fixture\n');
+    const reTracker = join(reTmp, 'data', 'applications.md');
+    writeFileSync(reTracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
+      '| 10 | 2026-09-01 | Acme | Platform Engineer | 3.0/5 | Applied | ❌ | [10](../reports/010-acme-2026-09-01.md) | first eval |\n');
+    writeFileSync(join(reAdditions, '050-acme.tsv'),
+      '50\t2026-10-01\tAcme\tPlatform Engineer\tEvaluated\t4.0/5\t❌\t[50](reports/050-acme-2026-10-01.md)\tre-evaluated\n');
+    const reEnv = { ...process.env, CAREER_OPS_TRACKER: reTracker, CAREER_OPS_ADDITIONS: reAdditions };
+    const reOut = run(NODE, ['merge-tracker.mjs'], { env: reEnv });
+    const reRows = readFileSync(reTracker, 'utf-8').split('\n').filter(l => /^\|\s*\d+\s*\|/.test(l));
+    const reRow = reRows[0] || '';
+    if (reOut !== null && reRows.length === 1
+        && reRow.includes('| 4.0/5 | Applied |')
+        && reRow.includes('| [10](../reports/010-acme-2026-09-01.md) |')
+        && reRow.includes('Re-eval 2026-10-01 (3→4): [50](../reports/050-acme-2026-10-01.md).')) {
+      pass('re-evaluation updates row #10 in place, keeps its own report link, and links report 50 from the note');
+    } else {
+      fail(`re-evaluation under a new report number wrote the wrong row:\n${reRows.join('\n')}`);
+    }
+    let verifyOut = '';
+    try {
+      verifyOut = execFileSync(NODE, ['verify-pipeline.mjs'], { cwd: ROOT, env: reEnv, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      verifyOut = (e.stdout || '').toString();
+    }
+    if (verifyOut.includes('Every row # equals its report number')) {
+      pass('re-evaluation leaves the tracker passing Check 14');
+    } else {
+      fail(`re-evaluation broke Check 14:\n${verifyOut.split('\n').filter(l => l.includes('#10')).join('\n')}`);
+    }
+  } finally {
+    rmSync(reTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`merge-tracker re-evaluation test crashed: ${e.message}`);
+}
+
 // ── DEDUP BLINDNESS FROM `---` / "Empresa" IN A DATA ROW (#2265) ─────────
 // Readers recognized the markdown separator row with `line.includes('---')`,
 // which also matched any DATA row whose free text contained three hyphens — a

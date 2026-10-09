@@ -751,14 +751,24 @@ for (const file of tsvFiles) {
       const lineIdx = appLines.indexOf(duplicate.raw);
       if (lineIdx >= 0) {
         const pdf = reportNum && pdfIndex.has(String(reportNum)) ? '✅' : duplicate.pdf;
+        // The row keeps its own report link: its # is that report's number
+        // (verify-pipeline Check 14), and status-log / follow-up entries are
+        // keyed on it. A re-evaluation under a NEW report number is linked
+        // from the note instead, so the newer report stays one click away
+        // without making "application N" mean two numbers.
+        const newReport = extractTrackerReportNumbers(addition.report)[0];
+        const sameReport = extractTrackerReportNumbers(duplicate.report).includes(newReport);
+        const reEval = sameReport
+          ? `Re-eval ${addition.date} (${oldScore}→${newScore}).`
+          : `Re-eval ${addition.date} (${oldScore}→${newScore}): ${addition.report}.`;
         const updatedLine = buildRow({
           num: duplicate.num, date: addition.date, company: addition.company,
           role: reportNumMatched ? addition.role : duplicate.role,
           via: addition.via || duplicate.via || '—',
           location: addition.location || duplicate.location || '—',
           score: addition.score, status: duplicate.status, pdf,
-          report: addition.report,
-          notes: `Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes}`,
+          report: duplicate.report,
+          notes: `${reEval} ${addition.notes}`,
         });
         appLines[lineIdx] = updatedLine;
         updated++;
