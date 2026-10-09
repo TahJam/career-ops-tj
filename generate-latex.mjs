@@ -6,9 +6,12 @@
  * Usage:
  *   node generate-latex.mjs <input.tex> [output.pdf]
  *   node generate-latex.mjs <input.tex> [output.pdf] --compile-only
+ *   node generate-latex.mjs <input.tex> <output.pdf> --report=NNN
  *
  * Default: validates career-ops template structure (from templates/cv-template.tex).
  * --compile-only: skip template validation; compile any user-owned .tex (latex-tex mode).
+ * --report=NNN: record the PDF for report NNN in data/pdf-index.tsv (lib/pdf-manifest.mjs),
+ *   so export-cv.mjs, find.mjs and the dashboard find it like an HTML-rendered CV.
  *
  * Requires: tectonic (preferred) or pdflatex on PATH.
  */
@@ -18,6 +21,7 @@ import { resolve, basename, dirname, join } from 'path';
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { updatePDFManifest } from './lib/pdf-manifest.mjs';
 
 const MIN_SECTIONS = 4;
 
@@ -226,12 +230,24 @@ export async function compileLatexFile(absPath, content, outputPath, compileOnly
 async function main() {
   const rawArgs = process.argv.slice(2);
   const compileOnly = rawArgs.includes('--compile-only');
-  const args = rawArgs.filter(a => a !== '--compile-only');
+  let reportNum = '';
+  const args = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a === '--compile-only') continue;
+    if (a.startsWith('--report=')) reportNum = a.slice('--report='.length);
+    else if (a === '--report') reportNum = rawArgs[++i] ?? '';
+    else args.push(a);
+  }
   const inputPath = args[0];
   const outputPath = args[1];
 
   if (!inputPath) {
-    console.error('Usage: node generate-latex.mjs <input.tex> [output.pdf] [--compile-only]');
+    console.error('Usage: node generate-latex.mjs <input.tex> [output.pdf] [--compile-only] [--report=NNN]');
+    process.exit(1);
+  }
+  if (reportNum && !/^\d+$/.test(reportNum)) {
+    console.error(`Invalid --report "${reportNum}". Use the report number, e.g. --report=018`);
     process.exit(1);
   }
 
@@ -245,6 +261,12 @@ async function main() {
   }
 
   const report = await compileLatexFile(absPath, content, outputPath || null, compileOnly);
+  // Record only a PDF that actually landed. The html column stays blank: the
+  // dashboard's D key re-renders that column with generate-pdf.mjs, which
+  // cannot render a .tex source.
+  if (reportNum && report.compiled && report.pdf?.path) {
+    report.manifest = updatePDFManifest(reportNum, report.pdf.path, '', '');
+  }
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.compiled ? 0 : (report.valid ? 1 : 1));
 }

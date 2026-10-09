@@ -21,7 +21,7 @@
  *
  * Zero dependencies and strictly read-only: parses data/applications.md via
  * the shared header-aware column mapping (tracker-parse.mjs) and the PDF
- * manifest data/pdf-index.tsv (written by generate-pdf.mjs).
+ * manifest data/pdf-index.tsv (written by lib/pdf-manifest.mjs).
  */
 
 import { readFileSync, existsSync } from 'fs';
