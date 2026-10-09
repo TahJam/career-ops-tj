@@ -86,12 +86,13 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `interview-prep/{NNN}-{company}-{role}.md` | Per-application interview intel reports (`{NNN}` = report number) |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
 | `export-cv.mjs` | Copies a report's tailored CV PDF (from `data/pdf-index.tsv`) to a fixed upload path — `cv.export_path` in `config/profile.yml`, or `npm run export-cv <report#> -- --out=<path>`; never modifies the source |
-| `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |
+| `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler; `--report=NNN` records the PDF in `data/pdf-index.tsv` so `export-cv.mjs` finds it |
 | `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever APIs directly, zero LLM cost |
 | `scan-ats-full.mjs` | Reverse-ATS keyword-first scanner over full public ATS datasets (Greenhouse/Lever/Ashby/Workday/iCIMS), filtered by portals.yml `title_filter`/`location_filter` — no company list needed; checkpoints every 500 companies, `--resume` continues an interrupted sweep |
 | `scan-interamt.mjs` | Playwright browser scanner for Interamt.de (German public sector portal — Apache Wicket, no REST API) |
 | `check-liveness.mjs` / `liveness-core.mjs` | Job posting liveness checker + shared logic (expired signals win over generic Apply text) |
 | `set-status.mjs` | Canonical CLI to update a tracker row: `node set-status.mjs <report#> <State> [--note] [--on]` — the report number is the only selector (names are refused; look one up with `find.mjs`), strict states.yml validation, shared tracker lock, atomic write |
+| `find.mjs` | Read-only lookup: a company/role fragment or number → matching rows with report #, status, and PDF. The one sanctioned way to turn a name into a report number (see Selecting an Application) |
 | `invite-match.mjs` | Fuzzy-matches a pasted interview-invite email (company name, date, req ID) against `data/applications.md`, ranking candidates when a company has multiple tracker entries (JSON or `--summary` table output) |
 | `paste-reply.mjs` | Manual/no-Gmail input path into `reply-watch.mjs`'s classification pipeline — normalizes a pasted or file-provided email's subject/from/body into a candidate object and appends it to `data/reply-candidates.json` (never overwrites existing entries; never classifies or touches the tracker itself) |
 | `analyze-patterns.mjs` | Pattern analysis script (JSON output). Includes ATS channel analysis (per-vendor advance rate; motivated by Bommasani et al., Algorithmic Monocultures in Hiring, FAccT 2026). |
@@ -106,7 +107,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `assessment-log.mjs` | Skills-assessment event logger — `add` appends platform/subject/threshold/score + candidate-observed staleness note to `data/assessments.tsv` (JSON or `--summary`) |
 | `jd-skill-gap.mjs` | Zero-LLM JD skill-gap checker — classifies a JD's required skills against `cv.md` into existing / supportedByResume / gap so a CV can be tailored honestly (JSON or `--summary` output); never auto-adds a claim to `cv.md` |
 | `contacts.mjs` | Job-search phonebook → vCard 3.0 exporter — stable UIDs so re-imports update instead of duplicating on platforms that honor vCard UID (JSON, `--summary`, `--vcf`, `--caller-id`) |
-| `outcome.mjs` | Record application outcome, archive artifacts, and sync tracker (`node outcome.mjs <selector> <type>`) |
+| `outcome.mjs` | Record application outcome, archive artifacts, and sync tracker (`node outcome.mjs <report#> <type>`; names refused) |
 | `plugins/sheets/` | Google Sheets mirror (opt-in plugin) — reconciles `data/applications.md` into a Google Sheet you own. One argument-free command reconciles the whole tab, deciding by comparing values against the sheet — so a status changed via `set-status.mjs`, the dashboard, or by hand is all detected alike. `npm run sheets:sync:dry` previews, `npm run sheets:sync` writes. Never writes outside columns A:H, never inserts/deletes/sorts rows — see `plans/08-31-26_google-sheets-sync.md` |
 | `weekly-digest.mjs` | Rolls up `interview-prep/sessions/*.md` (default: current ISO week) into a per-company round summary, recurring competency-tag counts, and best-effort recurring 🔴 gaps from `question-bank.md` (JSON or `--summary`) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy) + Risk Summary, plus `## Machine Summary` YAML for downstream scripts. Header includes `**Legitimacy:** {tier}`. |

@@ -627,12 +627,14 @@ node tracker.mjs export --out repaired.md # write to a file (existing file backe
 
 ## find
 
-Resolves a report number, tracker number, or company/role fragment to its full pipeline identity: company, role, tracker#, report#, canonical status, PDF path (from `data/pdf-index.tsv`), and report path. "Apply to #13" is ambiguous — report numbers and tracker row numbers diverge — and answering it used to require opening three files; this does it in one read-only lookup.
+Resolves a report number or a company/role fragment to its full pipeline identity: company, role, tracker#, report#, canonical status, PDF path (from `data/pdf-index.tsv`), and report path, in one read-only lookup.
+
+It is also the one place a name turns into a report number. Every command that selects an application (`set-status.mjs`, `outcome.mjs`, `mark-pdf-ready.mjs`, `export-cv.mjs`, and the `cover` / `pdf` / `email` / `interview-prep` / `outcome` modes) takes only the report number and refuses names, pointing here instead: run `find.mjs "<company>"`, pick the row, use its number. `resolveReportNumber()`, exported from this file, is the shared resolver those writers use.
 
 Zero dependencies, strictly read-only. Numeric queries match **both** the tracker # column and the report number from the Report link (`012` and `12` are the same number), so collisions between the two numbering schemes surface as multiple rows instead of a silent wrong pick. Text queries match company/role by case-insensitive substring, with the shared fuzzy matcher (`role-matcher.mjs`) as fallback for multi-word phrases.
 
 ```bash
-node find.mjs 13                # report# OR tracker# 13 — shows both if they differ
+node find.mjs 13                # report 13 (the tracker # is the same number; verify-pipeline Check 14)
 node find.mjs acme              # company fragment
 node find.mjs "data engineer"   # role phrase (fuzzy via role-matcher)
 node find.mjs acme --json       # machine-readable output
@@ -840,13 +842,14 @@ These have no `npm run` binding — modes and agents call them with
 | Invocation | Purpose |
 |------------|---------|
 | `node set-status.mjs <report#> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
+| `node mark-pdf-ready.mjs <report#> [--pdf <path>]` | Canonical write path for the tracker PDF cell (❌→✅). `--pdf` also records a PDF no generator wrote — e.g. a Canva export — as the report's PDF in `data/pdf-index.tsv` |
 | `node followup-cadence.mjs [--summary]` | Follow-up cadence per active application; flags overdue entries |
 | `node followup-seed.mjs [--backfill]` | Seed `data/follow-ups.md` with a pinned first follow-up date when a row turns Applied |
 | `node reply-watch.mjs` | Classify employer replies from `data/reply-candidates.json`, match to tracker rows, print a review digest |
 | `node process-quality.mjs [--summary]` | Aggregate `[process-friction]` tags from `data/active-interviews.md` per company |
 | `node reserve-report-num.mjs [--count N]` | Atomically reserve report numbers for parallel workers (fixes the #749 race) |
 | `node agent-inbox.mjs add "..."` | Append a request to the queue the agent drains at the next session start |
-| `node generate-latex.mjs <input.tex> [output.pdf]` | Validate and compile a generated `.tex` CV via tectonic or pdflatex |
+| `node generate-latex.mjs <input.tex> [output.pdf] [--report=NNN]` | Validate and compile a generated `.tex` CV via tectonic or pdflatex; `--report` records the PDF in `data/pdf-index.tsv` |
 | `node classify-tier.mjs` | Classify a job title into intern / entry / mid / senior |
 | `node plugins.mjs list\|run <id> [hook]` | CLI host for non-provider plugin hooks (see [PLUGINS.md](PLUGINS.md)) |
 | `node plugin-install.mjs` | Clone/scaffold/validate community plugins (allowlisted URLs, pinned SHA) |
