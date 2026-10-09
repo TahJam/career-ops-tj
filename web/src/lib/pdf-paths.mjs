@@ -8,7 +8,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import yaml from "js-yaml";
 
 /**
  * Lowercase, non-alphanumeric runs -> single hyphen, trimmed.
@@ -23,15 +22,17 @@ export function slugify(s) {
  * @typedef {Object} PdfPaths
  * @property {string} html - Backend-dictated path the agent must write the tailored HTML to.
  * @property {string} meta - Backend-dictated path the agent must write the {"format": ...} sidecar to.
- * @property {string} finalPdf - Where the backend renders the final PDF (output/cv-{candidate}-{company}-{date}.pdf).
+ * @property {string} finalPdf - Where the backend renders the final PDF (output/cv-{company-slug}-{NNN}.pdf).
  */
 
 /**
  * Precompute the scratch (HTML + format sidecar) and final PDF paths for a
  * "pdf" run, so the agent never chooses its own filenames — the backend owns
- * naming, and later, rendering. Resolves the report (for the company slug)
- * and config/profile.yml (for the candidate slug) — same naming convention
- * modes/pdf.md documents, so web and CLI output stay byte-identical.
+ * naming, and later, rendering. Resolves the report for the company slug and
+ * the report number — cv-{company-slug}-{NNN}.pdf, the naming convention
+ * modes/pdf.md documents, so web and CLI output stay byte-identical. The report
+ * number keeps two roles at one company apart; no candidate name or date
+ * (plans/10-07-26_report-number-as-id.md).
  *
  * Framework-agnostic: returns a result instead of constructing a Response, so
  * the caller (a Next.js route today) decides how to surface `ok: false`.
@@ -41,12 +42,11 @@ export function slugify(s) {
  * NOT a pure path computation, despite the name.
  *
  * @param {string} input - The report number (e.g. "018").
- * @param {string} today - YYYY-MM-DD.
  * @param {string} root - careerOpsRoot().
  * @param {(input: string) => string | null} findReportFile - career-ops.ts's findReportFile.
  * @returns {{ok: true, paths: PdfPaths} | {ok: false, error: string}}
  */
-export function resolvePdfPaths(input, today, root, findReportFile) {
+export function resolvePdfPaths(input, root, findReportFile) {
   // Reject anything but a bare report number before it ever reaches a path.
   // findReportFile()'s parseInt-based matching can still resolve a crafted
   // selector like "123/../../etc/passwd" to a legitimate report file, but the
@@ -59,24 +59,11 @@ export function resolvePdfPaths(input, today, root, findReportFile) {
   if (!reportFile) {
     return { ok: false, error: `No report #${input} found — evaluate this posting first.` };
   }
-  const companyMatch = path.basename(reportFile).match(/^\d+-(.+)-\d{4}-\d{2}-\d{2}\.md$/);
-  const companySlug = companyMatch ? companyMatch[1] : "company";
-  let candidateSlug = "candidate";
-  try {
-    // js-yaml v4's load() uses the safe default schema (no arbitrary type
-    // construction, unlike Python's PyYAML) — same pattern already used in
-    // web/src/app/api/profile/route.ts and portals/route.ts.
-    const profile = yaml.load(fs.readFileSync(path.join(root, "config", "profile.yml"), "utf8"));
-    if (profile?.candidate?.full_name) candidateSlug = slugify(profile.candidate.full_name);
-  } catch (err) {
-    // A missing profile.yml is expected (not every checkout has one yet) and
-    // falls back silently. Anything else — a real YAML syntax error in the
-    // user's own file — should not fail silently forever; it would otherwise
-    // produce a wrong-but-plausible-looking filename with zero signal.
-    if (err?.code !== "ENOENT") {
-      console.warn(`resolvePdfPaths: could not read/parse config/profile.yml, defaulting candidate slug: ${err.message}`);
-    }
-  }
+  // The report filename carries both halves of the name, the number already
+  // zero-padded the way every other artifact spells it (reports/018-acme-….md).
+  const reportMatch = path.basename(reportFile).match(/^(\d+)-(.+)-\d{4}-\d{2}-\d{2}\.md$/);
+  const reportNum = reportMatch ? reportMatch[1] : input;
+  const companySlug = reportMatch ? reportMatch[2] : "company";
   const scratchDir = path.join(root, ".career-ops-web", "pdf-tmp");
   fs.mkdirSync(scratchDir, { recursive: true });
   return {
@@ -84,7 +71,7 @@ export function resolvePdfPaths(input, today, root, findReportFile) {
     paths: {
       html: path.join(scratchDir, `cv-web-${input}.html`),
       meta: path.join(scratchDir, `cv-web-${input}.meta.json`),
-      finalPdf: path.join(root, "output", `cv-${candidateSlug}-${companySlug}-${today}.pdf`),
+      finalPdf: path.join(root, "output", `cv-${companySlug}-${reportNum}.pdf`),
     },
   };
 }

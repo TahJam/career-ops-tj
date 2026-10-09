@@ -120,7 +120,7 @@ export async function POST(req: Request) {
   // its own filenames — the backend owns naming and, later, rendering (#2172).
   let pdfPaths: PdfPaths | undefined;
   if (kind === "pdf") {
-    const pathsResult = resolvePdfPaths(input, today, careerOpsRoot(), findReportFile);
+    const pathsResult = resolvePdfPaths(input, careerOpsRoot(), findReportFile);
     if (!pathsResult.ok) {
       return new Response(JSON.stringify({ error: pathsResult.error }), {
         status: 400,
