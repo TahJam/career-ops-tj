@@ -18,9 +18,13 @@
  * Future work (out of scope here): fold per-vendor staleness rates into
  * analyze-patterns.mjs the way ATS channel yield is analyzed today.
  *
- * Run: node assessment-log.mjs add --company <name> [--report <num>] \
+ * Run: node assessment-log.mjs add (--report <num> | --company <name>) \
  *        --platform <vendor> --subject <topic> [--threshold <pct>] \
  *        [--score <pct>] [--stale "<observed staleness note>"]
+ *
+ * --report names the application; the company is read from its tracker row,
+ * so the two can never disagree (plans/10-07-26_report-number-as-id.md).
+ * --company is only for an assessment with no application behind it.
  *      node assessment-log.mjs             (JSON)
  *      node assessment-log.mjs --summary   (human-readable)
  *      node assessment-log.mjs --self-test
@@ -29,6 +33,9 @@
 import { readFileSync, existsSync, appendFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveTrackerPath } from './tracker-utils.mjs';
+import { resolveReportNumber } from './find.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const LOG_PATH = join(CAREER_OPS, 'data/assessments.tsv');
@@ -131,6 +138,33 @@ export function buildRow(fields, today) {
   ].join('\t');
 }
 
+/**
+ * Fill in the company from --report's tracker row. Pure: takes parsed tracker
+ * rows so the self-test can exercise it without a tracker file.
+ *
+ * @param {object} fields - Parsed `add` flags.
+ * @param {object[]} rows - parseTrackerRow output.
+ * @returns {object} fields, with company set when --report was given.
+ */
+export function companyForReport(fields, rows) {
+  const report = String(fields.report ?? '').trim();
+  if (!report) return fields;
+  if (String(fields.company ?? '').trim()) {
+    throw new Error('pass --report or --company, not both — the report number already names the company');
+  }
+  const resolved = resolveReportNumber(rows, report);
+  if (!resolved.row) throw new Error(resolved.message);
+  return { ...fields, company: resolved.row.company };
+}
+
+function readTrackerRows() {
+  const trackerPath = resolveTrackerPath(CAREER_OPS);
+  if (!existsSync(trackerPath)) return [];
+  const lines = readFileSync(trackerPath, 'utf-8').split('\n');
+  const colmap = resolveColumns(lines);
+  return lines.map(l => parseTrackerRow(l, colmap)).filter(Boolean);
+}
+
 function addEntry(args) {
   const fields = {};
   for (let i = 0; i < args.length; i++) {
@@ -140,10 +174,10 @@ function addEntry(args) {
   const today = new Date().toISOString().slice(0, 10);
   let row;
   try {
-    row = buildRow(fields, today);
+    row = buildRow(fields.report ? companyForReport(fields, readTrackerRows()) : fields, today);
   } catch (e) {
     console.error(`assessment-log: ${e.message}`);
-    console.error('Usage: node assessment-log.mjs add --company <name> [--report <num>] --platform <vendor> --subject <topic> [--threshold <pct>] [--score <pct>] [--stale "<note>"]');
+    console.error('Usage: node assessment-log.mjs add (--report <num> | --company <name>) --platform <vendor> --subject <topic> [--threshold <pct>] [--score <pct>] [--stale "<note>"]');
     process.exit(1);
   }
   // Append-only: existing rows are never rewritten. Create with header comment on first use.
@@ -230,7 +264,25 @@ function selfTest() {
   assert(throws({ company: 'Acme', platform: 'eSkill', subject: 'Excel', threshold: 'high' }, '--threshold must be a percentage'), 'prose threshold rejected');
   assert(throws({ company: 'A\tcme', platform: 'eSkill', subject: 'Excel' }, 'tabs'), 'embedded tab rejected');
 
-  console.log('assessment-log self-test OK (pct parser + TSV parser + aggregation + row builder)');
+  // companyForReport: --report fills the company from the tracker row
+  const trackerLines = [
+    '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |',
+    '|---|------|---------|------|-------|--------|-----|--------|-------|',
+    '| 42 | 2026-07-01 | Acme | Data Analyst | 4.0/5 | Applied | ❌ | [42](../reports/042-acme-2026-07-01.md) | — |',
+  ];
+  const colmap = resolveColumns(trackerLines);
+  const trackerRows = trackerLines.map(l => parseTrackerRow(l, colmap)).filter(Boolean);
+  const filled = companyForReport({ report: '042', platform: 'eSkill', subject: 'Excel' }, trackerRows);
+  assert(filled.company === 'Acme' && buildRow(filled, '2026-07-07').startsWith('2026-07-07\tAcme\t042\t'), '--report fills the company');
+  assert(companyForReport({ company: 'Hooli', platform: 'PI', subject: 'Behavioral' }, trackerRows).company === 'Hooli', '--company alone still works');
+  const cfrThrows = (fields, frag) => {
+    try { companyForReport(fields, trackerRows); return false; } catch (e) { return e.message.includes(frag); }
+  };
+  assert(cfrThrows({ report: '042', company: 'Acme', platform: 'eSkill', subject: 'Excel' }, 'not both'), '--report with --company rejected');
+  assert(cfrThrows({ report: '999', platform: 'eSkill', subject: 'Excel' }, 'No tracker row links report #999'), 'unknown report rejected');
+  assert(cfrThrows({ report: 'Acme', platform: 'eSkill', subject: 'Excel' }, 'not a report number'), 'name as --report rejected');
+
+  console.log('assessment-log self-test OK (pct parser + TSV parser + aggregation + row builder + --report lookup)');
 }
 
 // --- Output ---
@@ -240,7 +292,7 @@ function printSummary(result) {
 
   if (!assessments.length) {
     console.log('  No assessments logged yet.');
-    console.log('  Log one: node assessment-log.mjs add --company <name> --platform <vendor> --subject <topic>');
+    console.log('  Log one: node assessment-log.mjs add --report <num> --platform <vendor> --subject <topic>');
   } else {
     console.log('  Events:');
     for (const a of assessments) {
