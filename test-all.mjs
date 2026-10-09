@@ -8031,6 +8031,55 @@ try {
   fail(`find.mjs unit test crashed: ${e.message}`);
 }
 
+// resolveReportNumber is the one selector every tracker writer accepts
+// (plans/10-07-26_report-number-as-id.md): a report number resolves through the
+// Report cell; a name is refused, never matched.
+console.log('\n🧪 Testing find.mjs resolveReportNumber...');
+try {
+  const { resolveReportNumber } = await import(pathToFileURL(join(ROOT, 'find.mjs')).href);
+  const { resolveColumns, parseTrackerRow } = await import(pathToFileURL(join(ROOT, 'tracker-parse.mjs')).href);
+  const lines = [
+    '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |',
+    '|---|------|---------|------|-------|--------|-----|--------|-------|',
+    '| 141 | 2026-09-02 | Perplexity | MTS (Backend) | 4.2/5 | Applied | ✅ | [141](../reports/141-perplexity-2026-09-02.md) | — |',
+    '| 144 | 2026-09-02 | Perplexity | MTS (Enterprise) | 4.3/5 | Applied | ✅ | [144](../reports/144-perplexity-2026-09-02.md) | — |',
+    '| 226 | 2026-09-20 | ? | Software Engineer | 3.9/5 | Rejected | ❌ | [226](../reports/226-unknown-2026-09-20.md) | — |',
+    '| 300 | 2026-10-01 | DupeCo | A | 4.0/5 | Evaluated | ❌ | [300](../reports/300-dupe-2026-10-01.md) | — |',
+    '| 301 | 2026-10-01 | DupeCo | B | 4.0/5 | Evaluated | ❌ | [300](../reports/300-dupe-2026-10-01.md) | — |',
+  ];
+  const colmap = resolveColumns(lines);
+  const rows = lines.map(l => parseTrackerRow(l, colmap)).filter(Boolean);
+
+  const exact = resolveReportNumber(rows, '0144');
+  if (exact.row?.num === 144 && exact.row.role === 'MTS (Enterprise)') {
+    pass('resolveReportNumber resolves a zero-padded report number to its one row');
+  } else {
+    fail(`resolveReportNumber("0144") wrong: ${JSON.stringify(exact)}`);
+  }
+  // A company name must never resolve — not even for a company with one row,
+  // and not to the unknown-employer (?) row, which a substring match hits for any name.
+  const byName = ['Perplexity', 'Zzyzxco', '?'].map(n => resolveReportNumber(rows, n));
+  if (byName.every(r => r.error === 'usage' && !r.row) && /node find\.mjs "Perplexity"/.test(byName[0].message)) {
+    pass('resolveReportNumber refuses names (incl. one that a substring match would land on ?) and points to find.mjs');
+  } else {
+    fail(`resolveReportNumber accepted a name: ${JSON.stringify(byName)}`);
+  }
+  const missing = resolveReportNumber(rows, '999');
+  if (missing.error === 'not-found' && !missing.row) {
+    pass('resolveReportNumber reports an unknown report number as not-found');
+  } else {
+    fail(`resolveReportNumber("999") wrong: ${JSON.stringify(missing)}`);
+  }
+  const dupe = resolveReportNumber(rows, '300');
+  if (dupe.error === 'ambiguous' && dupe.candidates?.length === 2 && !dupe.row) {
+    pass('resolveReportNumber refuses to pick when two rows link one report');
+  } else {
+    fail(`resolveReportNumber("300") wrong: ${JSON.stringify(dupe)}`);
+  }
+} catch (e) {
+  fail(`find.mjs resolveReportNumber test crashed: ${e.message}`);
+}
+
 // dedup-tracker reads AND writes by column; with a Location column its status
 // promotion must target the Status cell, not fixed parts[6].
 console.log('\n🧪 Testing dedup-tracker with an inserted Location column...');

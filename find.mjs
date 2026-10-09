@@ -27,7 +27,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveColumns, parseTrackerRow, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { roleFuzzyMatch } from './role-matcher.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -92,6 +92,50 @@ export function parsePdfIndex(text) {
     map.set(normNum(fields[0]), fields[1]);
   }
   return map;
+}
+
+/**
+ * Resolve a report number to its one tracker row — the single selector every
+ * tracker-writing CLI accepts (plans/10-07-26_report-number-as-id.md).
+ *
+ * A bare number is the report number: the NNN in reports/NNN-{slug}-{date}.md.
+ * verify-pipeline.mjs Check 14 keeps every row's # equal to its report number,
+ * so this is also the tracker #. Names are refused, never matched: a company
+ * name is a search, and finding candidates is find.mjs's job, not a writer's.
+ *
+ * Pure: takes rows already parsed by the caller (each with .report, and
+ * .num / .company / .role for messages) and returns a result instead of
+ * exiting, so every CLI keeps its own error contract.
+ *
+ * @param {Array<{num: number, company: string, role: string, report: string}>} rows
+ * @param {string} selector - What the user typed.
+ * @returns {{row: object} | {error: 'usage'|'not-found'|'ambiguous', message: string, candidates?: object[]}}
+ */
+export function resolveReportNumber(rows, selector) {
+  const raw = String(selector ?? '').trim();
+  if (!/^\d+$/.test(raw)) {
+    return {
+      error: 'usage',
+      message: `"${raw}" is not a report number. Look it up first: node find.mjs "${raw}"`,
+    };
+  }
+  const num = parseInt(raw, 10);
+  const matches = rows.filter(r => extractTrackerReportNumbers(r.report).includes(num));
+  if (matches.length === 0) {
+    return { error: 'not-found', message: `No tracker row links report #${num}` };
+  }
+  if (matches.length > 1) {
+    // Check 14 makes this unreachable on a healthy tracker. Refuse rather than
+    // pick: the first match would be a coin flip on which application changes.
+    const candidates = matches.map(r => ({ num: r.num, company: r.company, role: r.role }));
+    return {
+      error: 'ambiguous',
+      message: `Report #${num} is linked by ${matches.length} tracker rows — run node verify-pipeline.mjs and fix the tracker:\n` +
+        candidates.map(c => `#${c.num}\t${c.company}\t${c.role}`).join('\n'),
+      candidates,
+    };
+  }
+  return { row: matches[0] };
 }
 
 /**

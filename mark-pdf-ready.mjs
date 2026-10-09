@@ -20,11 +20,8 @@
  * (plans/10-07-26_report-number-as-id.md).
  *
  * Row resolution is by REPORT NUMBER (the NNN in reports/NNN-{slug}-{date}.md),
- * not the tracker `#` column — those two numbers differ by design (see
- * modes/pdf.md step 19's own comment), and callers of this script always have
- * the report number, not the tracker row id. Resolution matches
- * extractTrackerReportNumbers(row.report) against the given report number;
- * zero or 2+ matches fail closed rather than guessing.
+ * through find.mjs resolveReportNumber(): the row whose Report cell links that
+ * number. Zero or 2+ matches fail closed rather than guessing.
  *
  * Idempotent: a row whose PDF cell is already ✅ is a no-op success (changed:
  * false), so a retried render never fails this step.
@@ -43,7 +40,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { dirname, extname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { extractTrackerReportNumbers, resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveReportNumber } from './find.mjs';
 import {
   rebuildRow, resolveTrackerPath, writeFileAtomic, CLI_EXIT, makeCliFailWith, acquireTrackerLockForCli,
 } from './tracker-utils.mjs';
@@ -160,22 +158,18 @@ if (rows.length === 0) {
   failWith(EXIT_NOT_FOUND, 'empty-tracker', `Tracker at ${APPS_FILE} has no data rows`);
 }
 
-const matches = rows.filter(r => extractTrackerReportNumbers(r.report).includes(targetReportNum));
-if (matches.length === 0) {
-  failWith(EXIT_NOT_FOUND, 'not-found', `No tracker row links report #${targetReportNum}`);
+// One shared definition of "the row for report N" (find.mjs
+// resolveReportNumber) instead of a local copy. The selector was validated as
+// numeric above, so only not-found and ambiguous (two rows linking one report,
+// a tracker data bug verify-pipeline flags) can come back.
+const resolved = resolveReportNumber(rows, reportSelector);
+if (resolved.error === 'not-found') {
+  failWith(EXIT_NOT_FOUND, 'not-found', resolved.message);
 }
-if (matches.length > 1) {
-  // An ambiguous report-number-to-row mapping is a tracker data bug (two rows
-  // linking the same report), not a legitimate disambiguation case — refuse
-  // to guess which one to mark, same fail-closed stance as set-status.mjs's
-  // duplicate-# guard.
-  const candidates = matches.map(r => ({ num: r.num, company: r.company, role: r.role }));
-  const listing = candidates.map(c => `#${c.num}\t${c.company}\t${c.role}`).join('\n');
-  failWith(EXIT_AMBIGUOUS, 'ambiguous',
-    `Report #${targetReportNum} is linked by ${matches.length} tracker rows — repair the Report cells:\n${listing}`,
-    { candidates });
+if (resolved.error) {
+  failWith(EXIT_AMBIGUOUS, 'ambiguous', resolved.message, { candidates: resolved.candidates });
 }
-const target = matches[0];
+const target = resolved.row;
 
 // Record the PDF first: the index row is what export-cv.mjs and find.mjs read,
 // and the ✅ below only claims a PDF exists.
