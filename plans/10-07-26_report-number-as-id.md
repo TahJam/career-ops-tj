@@ -1,8 +1,10 @@
 # Use the report number as the application ID everywhere a name is accepted today
 
-> **Status: decisions recorded and critical changes spiked 2026-10-09, not implemented.** The tables
-> reflect the decisions at the end. The riskiest changes were prototyped on an uncommitted branch against
-> a copy of the user data; see "Spike results". Nothing is merged and no user data was changed.
+> **Status: implemented 2026-10-09** on `feat/report-number-as-id` (25 commits plus this record; hashes in "Suggested
+> Commit Order"). `node test-all.mjs` 2979 passed / 0 failed (was 2954 / 1 on `main`), `go test ./...`
+> clean, `verify-pipeline.mjs` 0 errors on a copy of the real data. Not yet pushed or opened as a PR.
+> The Snorkel prep-file rename is a user-data step for after the merge. Deviations from the plan as
+> written are recorded under "Implementation notes".
 
 ## Context
 
@@ -240,33 +242,72 @@ The spike lives on `spike/report-number-as-id` (d8e6180) as reference only and i
 The order differs from the step numbering above: the CV filename work moves first because it fixes the
 existing failure, and the scripts come before the mode text that documents them.
 
-| # | Commit | Step | Files |
+| # | Hash | Commit | Step |
 |---|---|---|---|
-| 1 | `docs(plans): plan report number as the application ID` | — | this plan |
-| 2 | `fix(batch-prompt): name tailored CVs cv-{company-slug}-{NNN}` | 7 | `batch/batch-prompt.md` (paths, header template), `test-all.mjs` guard |
-| 3 | `refactor(pdf): move pdf-index.tsv writes into lib/pdf-manifest.mjs` | 7 | `lib/pdf-manifest.mjs`, `generate-pdf.mjs`, `tests/generate-pdf-page-budget.test.mjs`, `update-system.mjs` if required |
-| 4 | `feat(latex): record LaTeX PDFs in pdf-index.tsv with --report` | 7 | `generate-latex.mjs`, tests |
-| 5 | `feat(mark-pdf-ready): record a downloaded PDF in pdf-index.tsv with --pdf` | 7 | `mark-pdf-ready.mjs`, tests (the Canva entry point) |
-| 6 | `docs(modes): name CVs cv-{company-slug}-{NNN} in pdf, latex and latex-tex` | 7 | `modes/pdf.md`, `modes/latex.md`, `modes/latex-tex.md`, `test-all.mjs` guards |
-| 7 | `fix(web): drop the candidate slug from the rendered CV name` | 7 | `web/src/lib/pdf-paths.mjs`, its tests |
-| 8 | `docs: update CV filename examples to cv-{company-slug}-{NNN}` | 7 | `generate-pdf`/`export-cv` comments, `docs/ARCHITECTURE.md`, `docs/RUNNING_ON_A_BUDGET.md`, `examples/sample-report.md` |
-| 9 | `feat(verify-pipeline): require each row's # to equal its report number` | 1 | `verify-pipeline.mjs`, test fixtures without report links |
-| 10 | `fix(merge-tracker): refuse rows that break the report-number rule instead of renumbering` | 1 | `merge-tracker.mjs`, #912/#1704/collision/PDF-flag tests, `tracker-columns-tests.mjs` |
-| 11 | `feat(find): add resolveReportNumber for report-number selectors` | 2 | `find.mjs`, tests |
-| 12 | `refactor(set-status): accept only a report number` | 2 | `set-status.mjs`, `set-status-tests.mjs`, `tracker-writer-lock-tests.mjs` |
-| 13 | `fix(outcome): resolve rows by report number so names stop matching unknown employers` | 3 | `outcome.mjs`, `tests/outcome.test.mjs`, `modes/outcome.md` |
-| 14 | `feat(assessment-log): derive the company from --report` | 4 | `assessment-log.mjs`, `docs/SCRIPTS.md` |
-| 15 | `refactor(application-artifacts): read company and role from the report number` | 4 | `application-artifacts.mjs`, `modes/pdf.md`, tests |
-| 16 | `docs(scripts): label tracker-number arguments as report numbers` | 4 | `salary-gap.mjs`, `followup-seed.mjs` usage text |
-| 17 | `fix(dashboard): match CV files by report number before company` | 8 | `dashboard/internal/data/pdf.go`, `pdf_test.go` |
-| 18 | `fix(dashboard): read job URLs from report headers instead of matching by company` | 8 | `dashboard/internal/data/career.go`, tests |
-| 19 | `docs(modes): add the report-number selector rule to _shared.md` | 5 | `modes/_shared.md` |
-| 20 | `docs(modes): take a report number in cover, pdf and email` | 5, 6 | `modes/cover.md` (incl. payload/PDF paths), `modes/pdf.md`, `modes/email.md`, hints in `oferta.md`, `pipeline.md`, `batch-prompt.md`, `SKILL.md` |
-| 21 | `docs(modes): key interview-prep files and sessions on the report number` | 5, 6 | `interview-prep.md`, `interview/*`, `interview-redflag.md`, `apply.md`, `reply-watch.md`, `interview-prep/sessions/README.md` |
-| 22 | `docs(modes): use report numbers in apply, offer-prep, tracker and patterns` | 5, 6 | `apply.md`, `offer-prep.md`, `tracker.md`, `patterns.md` |
-| 23 | `docs: document report-number selectors in AGENTS.md and SCRIPTS.md` | 9 | `AGENTS.md`, `docs/SCRIPTS.md`, README if needed |
-| 24 | `test: guard modes and prompts against name selectors` | 10 | `test-all.mjs` |
-| — | Rename `interview-prep/snorkel-ai-coding-fellow.md` → `245-…` and fix its link in report 245 | 6 | User data, gitignored: done after the PR merges, so current modes never look for a renamed file |
+| 1 | d95d40b | `docs(plans): plan report number as the application ID` | — |
+| 2 | c93b5c7 | `fix(batch-prompt): name tailored CVs cv-{company-slug}-{NNN}` | 7 |
+| 3 | a0e06f6 | `refactor(pdf): move pdf-index.tsv writes into lib/pdf-manifest.mjs` | 7 |
+| 4 | 5f8031d | `feat(pdf): honor CAREER_OPS_PDF_INDEX when writing pdf-index.tsv` | 7 (added) |
+| 5 | 3f9c837 | `feat(latex): record LaTeX PDFs in pdf-index.tsv with --report` | 7 |
+| 6 | 21ead06 | `feat(mark-pdf-ready): record a downloaded PDF in pdf-index.tsv with --pdf` | 7 |
+| 7 | b711a22 | `docs(modes): name CVs cv-{company-slug}-{NNN} in pdf, latex and latex-tex` | 7 |
+| 8 | c7a1485 | `fix(web): drop the candidate slug from the rendered CV name` | 7 |
+| 9 | 5560489 | `docs: update CV filename examples to cv-{company-slug}-{NNN}` | 7 |
+| 10 | 91ede79 | `feat(verify-pipeline): require each row's # to equal its report number` | 1 |
+| 11 | cd07f37 | `fix(merge-tracker): refuse rows that break the report-number rule instead of renumbering` | 1 |
+| 12 | 6799b60 | `feat(find): add resolveReportNumber and use it in mark-pdf-ready` | 2 |
+| 13 | 8de5794 | `fix(outcome): resolve rows by report number so names stop matching unknown employers` | 3 |
+| 14 | 095f19f | `refactor(set-status): accept only a report number` | 2 |
+| 15 | 8e237d8 | `feat(assessment-log): derive the company from --report` | 4 |
+| 16 | f158e40 | `refactor(application-artifacts): read company and role from the report number` | 4 |
+| 17 | 00229f3 | `docs(scripts): label tracker-number arguments as report numbers` | 4 |
+| 18 | 371640e | `fix(dashboard): match CV files by report number before company` | 8 |
+| 19 | 3a13efb | `fix(dashboard): stop guessing job URLs from company-name matches` | 8 |
+| 20 | 156ed60 | `docs(agents): add the report-number selector rule to AGENTS.md` | 5 |
+| 21 | a07b372 | `docs(modes): take a report number in cover, pdf and email` | 5, 6 |
+| 22 | 59f3eea | `docs(modes): key interview-prep files and sessions on the report number` | 5, 6 |
+| 23 | 92a3e9b | `docs(modes): use report numbers in apply and offer-prep` | 5, 6 |
+| 24 | 5fd330a | `docs: document report-number selectors in AGENTS.md and SCRIPTS.md` | 9 |
+| 25 | cef8d6a | `test: guard modes and prompts against name selectors` | 10 |
+| — | — | Rename `interview-prep/snorkel-ai-coding-fellow.md` → `245-…` and fix its link in report 245 | 6, user data, after the merge |
+
+## Implementation notes (deviations from the plan as written)
+
+- **Commit 4 added: the manifest writer honors `CAREER_OPS_PDF_INDEX`.** Its readers (`export-cv.mjs`,
+  `sync-pdf-flags.mjs`) already did; the writer always wrote the live `data/pdf-index.tsv`, so any test of
+  `generate-latex --report` would have rewritten the user's real index.
+- **The Canva entry point is `mark-pdf-ready.mjs --pdf <path>`** (commit 6), not a new script: it already
+  resolves a report and flips the PDF cell, and now also records the file through `lib/pdf-manifest.mjs`.
+  Paths outside career-ops, non-`.pdf` files, and missing files are refused before anything is written.
+- **`mark-pdf-ready.mjs` moved onto `resolveReportNumber()`** in commit 12 — it carried its own copy of the
+  same lookup.
+- **`outcome.mjs` landed before `set-status.mjs`** (commits 13, 14): `outcome` passed `--force`/`--role`,
+  which the new `set-status` rejects, so the reverse order would have broken the suite between commits.
+  The regression test for the unknown-employer bug was confirmed to fail on `main`'s `outcome.mjs`.
+- **`set-status` docs changed with the script** (commit 14: AGENTS.md, SCRIPTS.md, `tracker`, `patterns`,
+  `interview-prep` modes) instead of in the docs commit, so no commit documents a CLI that rejects what it
+  shows. Commit 23 therefore covers `apply` and `offer-prep` only.
+- **AGENTS.md's backfill rule (#1799) changed with `merge-tracker`** (commit 11): a backfilled row now needs
+  a stub report, since report-less rows are refused.
+- **The selector rule lives in AGENTS.md, not `modes/_shared.md`** (commit 20). Most modes that select an
+  application (`cover`, `email`, `interview-prep`, `interview/*`, `outcome`, `tracker`, `offer-prep`,
+  `followup`, `reply-watch`) never load `_shared.md`; AGENTS.md is imported by `CLAUDE.md`, `CODEX.md`,
+  `OPENCODE.md`, and `KIMI.md`, so it reaches every mode. Modes point to "AGENTS.md → Selecting an
+  Application".
+- **`application-artifacts.mjs` dropped `--company`/`--role`** (`parseArgs` is strict, so passing them is an
+  error) and reads both from the report's tracker row.
+- **Dashboard job URLs:** Strategy 1 already reads each report's `**URL:**` header; the company-name
+  fallbacks only run for reports without an `http` URL (3 of the user's reports: 188, 245, 274). Both
+  fallbacks now share `roleMatchedURL()`, which returns nothing rather than guess (no shared role word, or
+  a tie). Found while checking: **both fallbacks are effectively dead on current data** — Strategy 4 reads
+  `scan-history.tsv` from the repo root while the file lives in `data/`, and Strategy 5 parses
+  `role @ company` notes while `batch-input.tsv` uses `Company — Role`. Left as is (out of scope); the
+  change is defensive.
+- **Not done (LOW, optional in the plan):** `archive-posting.mjs --report`, `jds/{NNN}-…` scratch names,
+  `deep` accepting a report number.
+- **Unchanged on purpose:** the sheets plugin (no plugin files or tracker data change), old CV files in
+  `output/`, existing `jds/` files, the company-level `interview-prep/{company-slug}-redflags.md`, and
+  `profile.example.yml`'s export-name example.
 
 ---
 
