@@ -394,7 +394,7 @@ const HEADER_VIA = `# Applications Tracker
 // field (`via=Hays`) instead of another positional slot, so a stale writer
 // omitting the empty-location pad can't silently shift columns.
 {
-  const TSV_VIA = '3\t2026-02-02\t?\tPlatform Engineer\tApplied\t4.1/5\t✅\t—\tblind agency listing\tvia=Hays\n';
+  const TSV_VIA = '3\t2026-02-02\t?\tPlatform Engineer\tApplied\t4.1/5\t✅\t[3](reports/003-tsv-fixture.md)\tblind agency listing\tvia=Hays\n';
   const sb = makeSandbox(HEADER_VIA, { '3-blind.tsv': TSV_VIA });
   const res = runScript('merge-tracker.mjs', [], sb);
   const row = dataRows(sb.tracker).find(l => l.includes('Platform Engineer'));
@@ -410,8 +410,8 @@ const HEADER_VIA = `# Applications Tracker
 
 // ── Test 11: ambiguous TSV extras are rejected loudly, never merged ─────────
 {
-  const TWO_UNTAGGED = '4\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnote\tSingapore\tHays\n';
-  const TWO_TAGS = '5\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnote\tvia=Hays\tvia=Randstad\n';
+  const TWO_UNTAGGED = '4\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[4](reports/004-tsv-fixture.md)\tnote\tSingapore\tHays\n';
+  const TWO_TAGS = '5\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[5](reports/005-tsv-fixture.md)\tnote\tvia=Hays\tvia=Randstad\n';
   const sb = makeSandbox(HEADER_VIA, { '4-a.tsv': TWO_UNTAGGED, '5-b.tsv': TWO_TAGS });
   const res = runScript('merge-tracker.mjs', [], sb);
   const rows = dataRows(sb.tracker);
@@ -431,8 +431,8 @@ const HEADER_VIA = `# Applications Tracker
 // hazard the Via column exists to surface. Same agency + same role IS the
 // re-blast duplicate and must still merge/update.
 {
-  const OTHER_AGENCY = '6\t2026-02-02\t?\tData Engineer\tApplied\t4.5/5\t✅\t—\tsame role, other agency\tvia=Randstad\n';
-  const SAME_AGENCY = '7\t2026-02-03\t?\tData Engineer\tApplied\t4.6/5\t✅\t—\tre-blast, higher score\tvia=Hays\n';
+  const OTHER_AGENCY = '6\t2026-02-02\t?\tData Engineer\tApplied\t4.5/5\t✅\t[6](reports/006-tsv-fixture.md)\tsame role, other agency\tvia=Randstad\n';
+  const SAME_AGENCY = '7\t2026-02-03\t?\tData Engineer\tApplied\t4.6/5\t✅\t[7](reports/007-tsv-fixture.md)\tre-blast, higher score\tvia=Hays\n';
   const sb = makeSandbox(HEADER_VIA, { '6-other.tsv': OTHER_AGENCY });
   const res1 = runScript('merge-tracker.mjs', [], sb);
   const rowsAfter1 = dataRows(sb.tracker).filter(l => l.includes('Data Engineer'));
@@ -458,8 +458,8 @@ const HEADER_VIA = `# Applications Tracker
 // cross-channel guard would see 'Hays' ≠ '' and add a second ? row instead of
 // updating the same-agency re-blast.
 {
-  const FIRST = '2\t2026-02-02\t?\tData Engineer\tApplied\t4.1/5\t✅\t—\tblind listing\tvia=Hays\n';
-  const REBLAST = '3\t2026-02-10\t?\tData Engineer\tApplied\t4.3/5\t✅\t—\tre-blast, higher score\tvia=Hays\n';
+  const FIRST = '2\t2026-02-02\t?\tData Engineer\tApplied\t4.1/5\t✅\t[2](reports/002-tsv-fixture.md)\tblind listing\tvia=Hays\n';
+  const REBLAST = '3\t2026-02-10\t?\tData Engineer\tApplied\t4.3/5\t✅\t[3](reports/003-tsv-fixture.md)\tre-blast, higher score\tvia=Hays\n';
   const sb = makeSandbox(HEADER_9, { '2-first.tsv': FIRST });
   const res1 = runScript('merge-tracker.mjs', [], sb);
   writeFileSync(join(sb.additions, '3-reblast.tsv'), REBLAST);

@@ -8612,11 +8612,11 @@ try {
     '# report\tpdf\thtml\tformat\tdate\n' +
       '041\toutput/cv-umbrella.pdf\toutput/cv-umbrella.html\tletter\t2026-01-07\n',
     [{
-      name: '001-umbrella.tsv',
-      content: '1\t2026-01-07\tUmbrella\tEngineer\t4.1/5\tEvaluated\t❌\t[41](../reports/041-umbrella-2026-01-07.md)\tok\n',
+      name: '041-umbrella.tsv',
+      content: '41\t2026-01-07\tUmbrella\tEngineer\t4.1/5\tEvaluated\t❌\t[41](../reports/041-umbrella-2026-01-07.md)\tok\n',
     }],
   );
-  if (newAddition.result !== null && newAddition.merged.includes('| 1 | 2026-01-07 | Umbrella | Engineer | 4.1/5 | Evaluated | ✅ | [41](../reports/041-umbrella-2026-01-07.md) | ok |')) {
+  if (newAddition.result !== null && newAddition.merged.includes('| 41 | 2026-01-07 | Umbrella | Engineer | 4.1/5 | Evaluated | ✅ | [41](../reports/041-umbrella-2026-01-07.md) | ok |')) {
     pass('merge-tracker applies pdf-index.tsv to a newly merged tracker row in the same run');
   } else {
     fail('merge-tracker left a newly merged row at ❌ despite a matching pdf-index.tsv entry');
@@ -8628,7 +8628,10 @@ try {
 // ── MERGE-TRACKER REPORT-NUMBER COLLISION (#912) ─────────────────
 // The report-number dedup check was not company-guarded: a TSV for NewCo
 // with report [1] would find the existing tracker row [1] for OtherCo and
-// update it in-place instead of appending NewCo as a new row.
+// update it in-place instead of appending NewCo as a new row. OtherCo must
+// stay untouched. NewCo is now refused rather than appended as #2: a row's #
+// is its report number (plans/10-07-26_report-number-as-id.md), so a second
+// row claiming report 1 would make "application 1" mean two applications.
 console.log('\n🧪 Testing merge-tracker report-number cross-company collision (#912)...');
 try {
   const col912Tmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-912-'));
@@ -8639,11 +8642,12 @@ try {
     mkdirSync(col912Additions);
 
     const col912Tracker = join(col912Tmp, 'data', 'applications.md');
-    writeFileSync(col912Tracker,
+    const col912Original =
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |\n');
+      '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |\n';
+    writeFileSync(col912Tracker, col912Original);
     writeFileSync(join(col912Tmp, 'reports', '001-otherco-2026-01-01.md'), '# fixture\n');
     writeFileSync(join(col912Tmp, 'reports', '001-newco-2026-01-05.md'), '# fixture\n');
 
@@ -8651,34 +8655,28 @@ try {
     writeFileSync(join(col912Additions, '001-newco.tsv'),
       '1\t2026-01-05\tNewCo\tNew Role\tEvaluated\t2.7/5\t❌\t[1](reports/001-newco-2026-01-05.md)\tcollision\n');
 
-    const col912Result = run(NODE, ['merge-tracker.mjs'], {
+    const col912Result = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
       env: { ...process.env, CAREER_OPS_TRACKER: col912Tracker, CAREER_OPS_ADDITIONS: col912Additions },
     });
-    if (col912Result === null) {
-      fail('merge-tracker crashed during report-number collision test (#912)');
+    const col912Output = `${col912Result.stdout || ''}\n${col912Result.stderr || ''}`;
+    const col912Merged = readFileSync(col912Tracker, 'utf-8');
+
+    if (col912Merged === col912Original) {
+      pass('report-number collision (#912): existing OtherCo row left untouched, NewCo not appended');
     } else {
-      const col912Merged = readFileSync(col912Tracker, 'utf-8');
-      const col912Rows = col912Merged.split('\n').filter(l => l.startsWith('| ') && !l.startsWith('| #') && !l.startsWith('|---'));
-      const expectedOtherCoRow = '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |';
-
-      if (col912Rows.length === 2) {
-        pass('report-number collision (#912): merged tracker has exactly 2 rows');
-      } else {
-        fail(`report-number collision (#912): expected 2 rows, got ${col912Rows.length}`);
-      }
-
-      if (col912Rows.some(r => r.trim() === expectedOtherCoRow.trim())) {
-        pass('report-number collision (#912): existing OtherCo row left untouched (exact match)');
-      } else {
-        fail('report-number collision (#912): OtherCo row was overwritten by NewCo addition');
-      }
-
-      const expectedNewCoRow = '| 2 | 2026-01-05 | NewCo | New Role | 2.7/5 | Evaluated | ❌ | [1](../reports/001-newco-2026-01-05.md) | collision |';
-      if (col912Rows.some(r => r.trim() === expectedNewCoRow.trim())) {
-        pass('report-number collision (#912): NewCo appended as a new entry with correct data');
-      } else {
-        fail('report-number collision (#912): NewCo entry was swallowed or has incorrect data');
-      }
+      fail(`report-number collision (#912): tracker changed\n${col912Merged}`);
+    }
+    if (col912Result.status === 1 && /Refusing 001-newco\.tsv[^\n]*#1 is already used/.test(col912Output)) {
+      pass('report-number collision (#912): NewCo refused loudly with exit 1');
+    } else {
+      fail(`report-number collision (#912): expected a refusal and exit 1, got ${col912Result.status}\n${col912Output}`);
+    }
+    if (existsSync(join(col912Additions, '001-newco.tsv'))) {
+      pass('report-number collision (#912): refused TSV stays pending in tracker-additions/');
+    } else {
+      fail('report-number collision (#912): refused TSV was archived to merged/ and lost from the pending queue');
     }
   } finally {
     rmSync(col912Tmp, { recursive: true, force: true });
@@ -8688,16 +8686,15 @@ try {
 }
 
 // ── MERGE-TRACKER STALE-NUMBER COLLISION WITH AN EXISTING ROW (#1704) ────
-// Different from the #912 test above: that one is a same-run collision where
-// the incoming TSV's num equals an EXISTING row's num (addition.num <= maxNum,
-// already handled by the old ++maxNum fallback). This one exercises the actual
-// #1704 gap: an existing row's number is invisible to the plain maxNum scan
-// (merge-tracker's own header/separator-skip heuristic excludes any row whose
-// company/role text happens to contain "Empresa" or "---" — a real Spanish-
-// market company name is a realistic trigger), so the naive
-// `addition.num > maxNum` check trusted a colliding number as free. The fix
-// builds a Set of every number actually on the tracker (independent of that
-// heuristic) and refuses to trust a number already in it.
+// Different from the #912 test above: an existing row's number is invisible
+// to the plain maxNum scan (merge-tracker's own header/separator-skip
+// heuristic excludes any row whose company/role text happens to contain
+// "Empresa" or "---" — a real Spanish-market company name is a realistic
+// trigger), so the naive `addition.num > maxNum` check trusted a colliding
+// number as free. The fix builds a Set of every number actually on the tracker
+// (independent of that heuristic) and refuses to trust a number already in it.
+// A colliding row is refused outright, not bumped to a free number: its # must
+// equal its report number (plans/10-07-26_report-number-as-id.md).
 console.log('\n🧪 Testing merge-tracker stale-number collision with a hidden existing row (#1704)...');
 try {
   const staleNumTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-1704-'));
@@ -8711,51 +8708,36 @@ try {
     // loop skips this line entirely (the same heuristic it uses to skip the
     // Spanish-locale header row), so its number is NOT counted toward the old
     // plain maxNum scan.
-    writeFileSync(staleNumTracker,
+    const staleNumOriginal =
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 9 | 2026-01-02 | Empresa Digital SA | Analyst | 3.5/5 | Evaluated | ❌ | — | original |\n');
+      '| 9 | 2026-01-02 | Empresa Digital SA | Analyst | 3.5/5 | Evaluated | ❌ | [9](../reports/009-empresa-2026-01-02.md) | original |\n';
+    writeFileSync(staleNumTracker, staleNumOriginal);
 
     // Stale TSV for an unrelated company also embeds num=9 — numerically
     // "ahead" of the naive maxNum(0) computed from the hidden row, but already
     // used.
-    writeFileSync(join(staleNumAdditions, '001-newco.tsv'),
-      '9\t2026-01-10\tNewCo\tFresh Role\tEvaluated\t2.9/5\t❌\t—\tstale number\n');
+    writeFileSync(join(staleNumAdditions, '009-newco.tsv'),
+      '9\t2026-01-10\tNewCo\tFresh Role\tEvaluated\t2.9/5\t❌\t[9](reports/009-newco-2026-01-10.md)\tstale number\n');
 
-    const staleNumResult = run(NODE, ['merge-tracker.mjs'], {
+    const staleNumResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
       env: { ...process.env, CAREER_OPS_TRACKER: staleNumTracker, CAREER_OPS_ADDITIONS: staleNumAdditions },
     });
-    if (staleNumResult === null) {
-      fail('merge-tracker crashed during stale-number collision test (#1704)');
+    const staleNumOutput = `${staleNumResult.stdout || ''}\n${staleNumResult.stderr || ''}`;
+    const staleNumMerged = readFileSync(staleNumTracker, 'utf-8');
+
+    if (staleNumMerged === staleNumOriginal) {
+      pass('stale-number collision (#1704): hidden existing row #9 (Empresa Digital SA) untouched, NewCo not added');
     } else {
-      const staleNumMerged = readFileSync(staleNumTracker, 'utf-8');
-      const staleNumRows = staleNumMerged.split('\n').filter(l => l.startsWith('| ') && !l.startsWith('| #') && !l.startsWith('|---'));
-
-      if (staleNumRows.length === 2) {
-        pass('stale-number collision (#1704): merged tracker has exactly 2 rows');
-      } else {
-        fail(`stale-number collision (#1704): expected 2 rows, got ${staleNumRows.length}`);
-      }
-
-      const numsUsed = staleNumRows.map(r => parseInt(r.split('|')[1].trim(), 10));
-      if (new Set(numsUsed).size === numsUsed.length) {
-        pass('stale-number collision (#1704): no two rows share a tracker number');
-      } else {
-        fail(`stale-number collision (#1704): duplicate tracker number produced — ${numsUsed.join(', ')}`);
-      }
-
-      if (staleNumRows.some(r => r.includes('Empresa Digital SA') && /^\| 9 \|/.test(r))) {
-        pass('stale-number collision (#1704): hidden existing row #9 (Empresa Digital SA) untouched');
-      } else {
-        fail(`stale-number collision (#1704): existing #9 row was overwritten\n${staleNumMerged}`);
-      }
-
-      if (staleNumRows.some(r => r.includes('NewCo') && !/^\| 9 \|/.test(r))) {
-        pass('stale-number collision (#1704): NewCo bumped to a truly free number instead of reusing #9');
-      } else {
-        fail(`stale-number collision (#1704): NewCo was not bumped off the colliding number\n${staleNumMerged}`);
-      }
+      fail(`stale-number collision (#1704): tracker changed\n${staleNumMerged}`);
+    }
+    if (staleNumResult.status === 1 && /Refusing 009-newco\.tsv[^\n]*#9 is already used/.test(staleNumOutput)) {
+      pass('stale-number collision (#1704): the hidden row\'s number counts as used and NewCo is refused');
+    } else {
+      fail(`stale-number collision (#1704): expected a refusal naming #9 and exit 1, got ${staleNumResult.status}\n${staleNumOutput}`);
     }
   } finally {
     rmSync(staleNumTmp, { recursive: true, force: true });
@@ -8767,8 +8749,9 @@ try {
 // ── MERGE-TRACKER RESERVED-NUMBER FIDELITY (#1733) ──────────────
 // Parallel workers may reserve numbers in order but finish out of order. A
 // free reserved number remains valid even when a later number has already
-// reached the tracker; merge-tracker must preserve it, and only renumber on a
-// real collision (with a visible warning).
+// reached the tracker; merge-tracker must preserve it. A real collision is
+// refused loudly and left pending, never renumbered: the row's # must stay its
+// report number (plans/10-07-26_report-number-as-id.md).
 console.log('\n🧪 Testing merge-tracker reserved-number fidelity (#1733)...');
 try {
   const reservedTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-reserved-'));
@@ -8781,7 +8764,7 @@ try {
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 10 | 2026-01-10 | LaterCo | Engineer | 4.0/5 | Evaluated | ❌ | — | finished first |\n');
+      '| 10 | 2026-01-10 | LaterCo | Engineer | 4.0/5 | Evaluated | ❌ | [10](../reports/010-later-2026-01-10.md) | finished first |\n');
 
     writeFileSync(join(reservedAdditions, '005-early.tsv'),
       '5\t2026-01-05\tEarlyCo\tEngineer\tEvaluated\t4.1/5\t❌\t[5](reports/005-early-2026-01-05.md)\treserved first\n');
@@ -8796,7 +8779,7 @@ try {
     }
 
     writeFileSync(join(reservedAdditions, '005-collision.tsv'),
-      '5\t2026-01-11\tCollisionCo\tAnalyst\tEvaluated\t3.8/5\t❌\t—\tstale reservation\n');
+      '5\t2026-01-11\tCollisionCo\tAnalyst\tEvaluated\t3.8/5\t❌\t[5](reports/005-collision-2026-01-11.md)\tstale reservation\n');
     const collisionResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
       cwd: ROOT,
       encoding: 'utf-8',
@@ -8804,18 +8787,74 @@ try {
     });
     const afterCollision = readFileSync(reservedTracker, 'utf-8');
     const collisionOutput = `${collisionResult.stdout || ''}\n${collisionResult.stderr || ''}`;
-    if (collisionResult.status === 0
-        && /^\| 11 \|[^\n]*\| CollisionCo \|/m.test(afterCollision)
-        && /#5[^\n]*(?:already|collision)[^\n]*#11/i.test(collisionOutput)) {
-      pass('merge-tracker renumbers only a real collision and warns with both IDs');
+    if (collisionResult.status === 1
+        && !afterCollision.includes('CollisionCo')
+        && /Refusing 005-collision\.tsv[^\n]*#5 is already used/.test(collisionOutput)
+        && existsSync(join(reservedAdditions, '005-collision.tsv'))) {
+      pass('merge-tracker refuses a real collision loudly, adds nothing, and leaves the TSV pending');
     } else {
-      fail(`merge-tracker collision fallback was not loud and deterministic\n${collisionOutput}\n${afterCollision}`);
+      fail(`merge-tracker collision was not refused loudly and kept pending\n${collisionOutput}\n${afterCollision}`);
     }
   } finally {
     rmSync(reservedTmp, { recursive: true, force: true });
   }
 } catch (e) {
   fail(`merge-tracker reserved-number fidelity test crashed: ${e.message}`);
+}
+
+// ── MERGE-TRACKER ONE NUMBER SPACE: MISMATCH AND NO REPORT ──────
+// A new row's # must equal the one report it links
+// (plans/10-07-26_report-number-as-id.md). A TSV whose num differs from its
+// report number, or that links no report (a backfill with no evaluation), is
+// refused and left pending; a valid TSV in the same run still merges.
+console.log('\n🧪 Testing merge-tracker refusal of rows that break the report-number rule...');
+try {
+  const nsTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-numspace-'));
+  try {
+    mkdirSync(join(nsTmp, 'data'));
+    const nsAdditions = join(nsTmp, 'additions');
+    mkdirSync(nsAdditions);
+    const nsTracker = join(nsTmp, 'data', 'applications.md');
+    writeFileSync(nsTracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n');
+    writeFileSync(join(nsAdditions, '011-good.tsv'),
+      '11\t2026-02-01\tGoodCo\tEngineer\tEvaluated\t4.0/5\t❌\t[11](reports/011-goodco-2026-02-01.md)\tok\n');
+    writeFileSync(join(nsAdditions, '012-mismatch.tsv'),
+      '12\t2026-02-01\tBetaCo\tAnalyst\tEvaluated\t3.9/5\t❌\t[13](reports/013-betaco-2026-02-01.md)\tmismatch\n');
+    writeFileSync(join(nsAdditions, '014-backfill.tsv'),
+      '14\t2026-02-01\tGammaCo\tManager\tApplied\tN/A\t❌\t—\tbackfill without evaluation\n');
+    const nsResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      env: { ...process.env, CAREER_OPS_TRACKER: nsTracker, CAREER_OPS_ADDITIONS: nsAdditions },
+    });
+    const nsOutput = `${nsResult.stdout || ''}\n${nsResult.stderr || ''}`;
+    const nsMerged = readFileSync(nsTracker, 'utf-8');
+    if (/^\| 11 \|[^\n]*\| GoodCo \|/m.test(nsMerged) && !nsMerged.includes('BetaCo') && !nsMerged.includes('GammaCo')) {
+      pass('merge-tracker merges the valid row and adds neither refused row');
+    } else {
+      fail(`merge-tracker merged the wrong rows\n${nsMerged}`);
+    }
+    if (nsResult.status === 1
+        && /Refusing 012-mismatch\.tsv[^\n]*num 12 does not match its report number 13/.test(nsOutput)
+        && /Refusing 014-backfill\.tsv[^\n]*must link exactly one report \(found 0\)/.test(nsOutput)) {
+      pass('merge-tracker refuses a num/report mismatch and a report-less row, each with its reason, exit 1');
+    } else {
+      fail(`merge-tracker did not refuse both rows with reasons (exit ${nsResult.status})\n${nsOutput}`);
+    }
+    if (existsSync(join(nsAdditions, '012-mismatch.tsv')) && existsSync(join(nsAdditions, '014-backfill.tsv'))
+        && !existsSync(join(nsAdditions, '011-good.tsv'))) {
+      pass('refused TSVs stay pending; the merged one moves to merged/');
+    } else {
+      fail('merge-tracker archived a refused TSV or left the merged one pending');
+    }
+  } finally {
+    rmSync(nsTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`merge-tracker report-number refusal test crashed: ${e.message}`);
 }
 
 // ── DEDUP BLINDNESS FROM `---` / "Empresa" IN A DATA ROW (#2265) ─────────
