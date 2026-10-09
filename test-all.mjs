@@ -2740,9 +2740,10 @@ if (
 // the same collision applies here and the fix has to hold in both places.
 const pdfModeDoc = readFile('modes/pdf.md');
 if (
-  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}.html') &&
-  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
+  pdfModeDoc.includes('output/cv-{company-slug}-{NNN}.html') &&
+  pdfModeDoc.includes('output/cv-{company-slug}-{NNN}.pdf') &&
   pdfModeDoc.includes('Flat CV paths must carry `{NNN}`, the report number') &&
+  !/\{candidate\}/.test(pdfModeDoc) &&
   pdfModeDoc.includes('batch-tailor.mjs')
 ) {
   pass('pdf mode keys flat CV paths on the report number and flags the batch-tailor fan-out');
@@ -2750,13 +2751,16 @@ if (
   fail('modes/pdf.md flat CV paths must carry {NNN} — batch-tailor.mjs workers otherwise overwrite each other');
 }
 
-// Same collision, LaTeX path.
+// Same collision, LaTeX path. The -latex suffix keeps a LaTeX PDF from
+// overwriting the same report's HTML-rendered cv-{company-slug}-{NNN}.pdf, and
+// --report records it so export-cv.mjs finds it.
 for (const latexMode of ['modes/latex.md', 'modes/latex-tex.md']) {
   const doc = readFile(latexMode);
   if (
-    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex') &&
-    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
-    !/output\/cv-\{candidate\}-\{company\}-\{YYYY-MM-DD\}\.(?:tex|pdf)/.test(doc)
+    doc.includes('output/cv-{company-slug}-{NNN}-latex.tex') &&
+    doc.includes('output/cv-{company-slug}-{NNN}-latex.pdf') &&
+    doc.includes('--report={NNN}') &&
+    !/\{candidate\}/.test(doc)
   ) {
     pass(`${latexMode} keys CV output paths on the report number`);
   } else {

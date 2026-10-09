@@ -14,10 +14,10 @@ Export a tailored, ATS-optimized CV as a `.tex` file and compile it to PDF via `
 8. Select top 3-4 most relevant projects for the offer
 9. Reorder experience bullets by JD relevance
 10. Inject keywords naturally into existing achievements
-11. Build a JSON payload (see schema below) and write to `/tmp/cv-{candidate}-{company}-{NNN}.json`
-12. Run: `node build-cv-latex.mjs /tmp/cv-{candidate}-{company}-{NNN}.json output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex`
-13. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf`
-    *(Replace `{candidate}`, `{company}`, `{NNN}`, `{YYYY-MM-DD}` with actual values. `{NNN}` is the report number from `reports/{NNN}-{company}-{YYYY-MM-DD}.md` — it keeps two roles at the same company from overwriting each other's CV, so never drop it. Omit it only for a true one-off with no report.)*
+11. Build a JSON payload (see schema below) and write to `/tmp/cv-{company-slug}-{NNN}.json`
+12. Run: `node build-cv-latex.mjs /tmp/cv-{company-slug}-{NNN}.json output/cv-{company-slug}-{NNN}-latex.tex`
+13. Run: `node generate-latex.mjs output/cv-{company-slug}-{NNN}-latex.tex output/cv-{company-slug}-{NNN}-latex.pdf --report={NNN}`
+    *(Replace `{company-slug}` and `{NNN}` with actual values. `{NNN}` is the report number from `reports/{NNN}-{company}-{YYYY-MM-DD}.md` — it keeps two roles at the same company from overwriting each other's CV, so never drop it. The `-latex` suffix keeps this PDF from overwriting the same report's HTML-rendered `cv-{company-slug}-{NNN}.pdf`. `--report` records the PDF in `data/pdf-index.tsv` so `npm run export-cv {NNN}` finds it. For a true one-off with no report, drop `-{NNN}` and `--report`.)*
 14. Report: .tex path, .pdf path, file sizes, section count, keyword coverage %
 
 **Requires:** `tectonic` (preferred — `brew install tectonic`, auto-downloads packages) or `pdflatex` (MiKTeX / TeX Live) on PATH.

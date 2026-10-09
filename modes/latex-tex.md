@@ -35,7 +35,7 @@ latex:
 ## Pipeline
 
 1. Resolve source `.tex` path (see above)
-2. Run: `node extract-latex-content.mjs <source.tex> --out /tmp/cv-slots-{company}-{NNN}.json`
+2. Run: `node extract-latex-content.mjs <source.tex> --out /tmp/cv-slots-{company-slug}-{NNN}.json`
 3. If `supported: false` → show `error` + `hint`; do not proceed
 4. Read JD (from context, report, or ask user)
 5. Tailor **only** the `slots[].text` values for JD fit (same ethics as `modes/latex.md` / `pdf`):
@@ -54,11 +54,11 @@ latex:
 }
 ```
 
-7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company}-{NNN}.json output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex`
-8. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf --compile-only`
+7. Run: `node patch-latex-content.mjs <source.tex> /tmp/cv-patches-{company-slug}-{NNN}.json output/cv-{company-slug}-{NNN}-latex.tex`
+8. Run: `node generate-latex.mjs output/cv-{company-slug}-{NNN}-latex.tex output/cv-{company-slug}-{NNN}-latex.pdf --compile-only --report={NNN}`
 9. Report: family, slot count, patched count, `.tex` path, `.pdf` path (or compile error)
 
-`{NNN}` is the report number from `reports/{NNN}-{company}-{YYYY-MM-DD}.md`. It keeps two roles at the same company from overwriting each other's CV — never drop it. Omit it only for a true one-off with no report.
+`{NNN}` is the report number from `reports/{NNN}-{company}-{YYYY-MM-DD}.md`. It keeps two roles at the same company from overwriting each other's CV — never drop it. The `-latex` suffix keeps the PDF from overwriting the same report's HTML-rendered CV, and `--report` records it in `data/pdf-index.tsv` so `npm run export-cv {NNN}` finds it. For a true one-off with no report, drop `-{NNN}` and `--report`.
 
 **Requires:** `tectonic` or `pdflatex` on PATH (same as `latex` mode).
 
