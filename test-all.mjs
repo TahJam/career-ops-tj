@@ -2734,6 +2734,57 @@ if (
   fail('batch prompt CV filenames must carry {{REPORT_NUM}} — company-slug-only names overwrite sibling roles');
 }
 
+// Report number as the application ID (plans/10-07-26_report-number-as-id.md).
+// The bug class lives in prompt and mode text — "find the report by slug",
+// "set-status <company>" — so only text assertions keep it from coming back.
+{
+  const selectorDocs = [
+    ...readdirSync(join(ROOT, 'modes')).filter(f => f.endsWith('.md')).map(f => `modes/${f}`),
+    ...readdirSync(join(ROOT, 'modes', 'interview')).filter(f => f.endsWith('.md')).map(f => `modes/interview/${f}`),
+    'batch/batch-prompt.md', 'AGENTS.md', 'docs/SCRIPTS.md', '.agents/skills/career-ops/SKILL.md',
+  ];
+  const NAME_SELECTOR = [
+    /\/career-ops (?:pdf|cover|email(?: stuck| noshow)?|offer-prep reply) \{(?:company-)?slug\}/,
+    /\{report-number-or-slug\}/,
+    /(?:set-status|outcome)\.mjs <report#\\?\|company>/,
+    /(?:set-status|outcome)\.mjs --(?:row|role|force)\b/,
+  ];
+  const offenders = [];
+  for (const doc of selectorDocs) {
+    const text = readFile(doc);
+    for (const re of NAME_SELECTOR) if (re.test(text)) offenders.push(`${doc}: ${re}`);
+  }
+  if (offenders.length === 0) {
+    pass('no mode, prompt, or doc selects an application by company name or slug');
+  } else {
+    fail(`name selectors are back — use the report number:\n  ${offenders.join('\n  ')}`);
+  }
+
+  const agentsDoc = readFile('AGENTS.md');
+  if (agentsDoc.includes('### Selecting an Application (Report Number)') && agentsDoc.includes('node find.mjs "<name>"')) {
+    pass('AGENTS.md carries the report-number selector rule');
+  } else {
+    fail('AGENTS.md lost the "Selecting an Application (Report Number)" rule');
+  }
+
+  // Files later looked up per application must carry the report number, or two
+  // applications at one company collide (the same bug class as CV filenames).
+  const keyed = [
+    ['modes/interview-prep.md', 'interview-prep/{NNN}-{company-slug}-{role-slug}.md'],
+    ['modes/interview/debrief.md', 'interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md'],
+    ['modes/interview/practice.md', 'interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md'],
+    ['modes/cover.md', '/tmp/cover-payload-{company-slug}-{NNN}.json'],
+    ['modes/cover.md', 'output/{company-slug}-{role-slug}-{NNN}-cover.pdf'],
+    ['modes/offer-prep.md', 'data/offers/{NNN}-{company-slug}/'],
+  ];
+  const missing = keyed.filter(([doc, path]) => !readFile(doc).includes(path)).map(([doc, path]) => `${doc}: ${path}`);
+  if (missing.length === 0) {
+    pass('per-application artifact paths carry the report number');
+  } else {
+    fail(`per-application paths lost their {NNN}:\n  ${missing.join('\n  ')}`);
+  }
+}
+
 // modes/pdf.md is not only the interactive path: batch-tailor.mjs spawns one
 // `claude -p --append-system-prompt-file modes/pdf.md` worker per completed
 // batch row above --min-score, sequentially, against the same output/ dir. So
