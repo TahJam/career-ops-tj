@@ -258,6 +258,14 @@ Default modes are in `modes/` (English). This fork removed the 16 non-English la
 | Wants to queue a request for later / check the inbox between sessions | `agent-inbox` — append-only checklist drained next session; nothing auto-submits |
 | Wants to add a finished project, paper, or role to the CV | `add` — source-grounded preview, confirm-before-write; dedup + insertion via `add-entry.mjs` |
 
+### Selecting an Application (Report Number)
+
+**An application's ID is its report number** — the `NNN` in `reports/NNN-{company-slug}-{YYYY-MM-DD}.md`. It is also the row's `#` in `data/applications.md` (`verify-pipeline.mjs` Check 14 enforces that), so there is one number space. Every argument that selects an existing application — `/career-ops cover`, `pdf`, `email`, `interview-prep`, `interview/*`, `outcome`, `offer-prep reply`, and the scripts `set-status.mjs`, `outcome.mjs`, `mark-pdf-ready.mjs`, `export-cv.mjs` — takes that number.
+
+- **Never resolve a company name, role title, or slug to a row yourself**, not even as a fallback and not even when the company has one row. One company can have 20 applications; a name is a search, not an ID.
+- When the user gives a name instead of a number, run `node find.mjs "<name>"`, show the matching rows (number, company, role, status), and **wait for the user to give the number** before doing anything else.
+- **Names are still right where they are the input itself**, not a selector: a pasted reply or invite email (`reply-watch`, `invite-match.mjs`), a live application form (`apply`), a pasted JD or contract for something never evaluated, per-company aggregates (`company-history.mjs`, `interview-redflag`), and outside searches (`contacto`, `deep`). Whatever those match to a row is confirmed by number before anything is written.
+
 ### CV Source of Truth
 
 - `cv.md` in project root is the canonical CV
