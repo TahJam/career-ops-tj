@@ -631,3 +631,31 @@ func TestUpdateApplicationStatusAppendsToStatusLog(t *testing.T) {
 		t.Errorf("no-op transition appended a ledger line: %d lines, want 2", got)
 	}
 }
+
+// The company-name URL fallbacks run only when a report carries no URL. They
+// must not hand an application another role's posting
+// (plans/10-07-26_report-number-as-id.md).
+func TestRoleMatchedURLNeverGuesses(t *testing.T) {
+	listings := []urlCandidate{
+		{url: "https://x.test/backend", title: "MTS (SWE, Backend Platform)"},
+		{url: "https://x.test/enterprise", title: "MTS (SWE, Enterprise Adoption)"},
+	}
+	cases := []struct {
+		name       string
+		role       string
+		candidates []urlCandidate
+		want       string
+	}{
+		{"clear winner", "MTS (SWE, Enterprise Adoption)", listings, "https://x.test/enterprise"},
+		{"no shared role word", "Coding Fellow", listings, ""},
+		{"tie between listings", "MTS (SWE)", listings, ""},
+		{"only listing is a different role", "Software Engineer", []urlCandidate{{url: "https://x.test/pm", title: "Product Manager"}}, ""},
+		{"only listing is this role", "Product Manager", []urlCandidate{{url: "https://x.test/pm", title: "Senior Product Manager"}}, "https://x.test/pm"},
+		{"no listings", "Engineer", nil, ""},
+	}
+	for _, c := range cases {
+		if got := roleMatchedURL(c.role, c.candidates); got != c.want {
+			t.Errorf("%s: roleMatchedURL(%q) = %q, want %q", c.name, c.role, got, c.want)
+		}
+	}
+}

@@ -346,30 +346,11 @@ func enrichFromScanHistory(careerOpsPath string, apps []model.CareerApplication)
 		if apps[i].JobURL != "" {
 			continue
 		}
-		key := normalizeCompany(apps[i].Company)
-		matches := byCompany[key]
-		if len(matches) == 1 {
-			apps[i].JobURL = matches[0].url
-		} else if len(matches) > 1 {
-			// Multiple entries: pick best role match
-			appRole := strings.ToLower(apps[i].Role)
-			best := matches[0].url
-			bestScore := 0
-			for _, m := range matches {
-				score := 0
-				mTitle := strings.ToLower(m.title)
-				for _, word := range strings.Fields(appRole) {
-					if len(word) > 2 && strings.Contains(mTitle, word) {
-						score++
-					}
-				}
-				if score > bestScore {
-					bestScore = score
-					best = m.url
-				}
-			}
-			apps[i].JobURL = best
+		candidates := make([]urlCandidate, 0, len(byCompany[normalizeCompany(apps[i].Company)]))
+		for _, m := range byCompany[normalizeCompany(apps[i].Company)] {
+			candidates = append(candidates, urlCandidate{url: m.url, title: m.title})
 		}
+		apps[i].JobURL = roleMatchedURL(apps[i].Role, candidates)
 	}
 }
 
@@ -432,32 +413,54 @@ func enrichAppURLsByCompany(careerOpsPath string, apps []model.CareerApplication
 		if apps[i].JobURL != "" {
 			continue
 		}
-		key := normalizeCompany(apps[i].Company)
-		matches := byCompany[key]
-		if len(matches) == 1 {
-			apps[i].JobURL = matches[0].url
-		} else if len(matches) > 1 {
-			// Multiple entries for same company: pick best role match
-			appRole := strings.ToLower(apps[i].Role)
-			best := matches[0].url
-			bestScore := 0
-			for _, m := range matches {
-				score := 0
-				mRole := strings.ToLower(m.role)
-				// Count matching words
-				for _, word := range strings.Fields(appRole) {
-					if len(word) > 2 && strings.Contains(mRole, word) {
-						score++
-					}
-				}
-				if score > bestScore {
-					bestScore = score
-					best = m.url
-				}
+		matches := byCompany[normalizeCompany(apps[i].Company)]
+		candidates := make([]urlCandidate, 0, len(matches))
+		for _, m := range matches {
+			candidates = append(candidates, urlCandidate{url: m.url, title: m.role})
+		}
+		apps[i].JobURL = roleMatchedURL(apps[i].Role, candidates)
+	}
+}
+
+// urlCandidate is a job URL found for an application's company, with the
+// posting title it was listed under.
+type urlCandidate struct {
+	url   string
+	title string
+}
+
+// roleMatchedURL picks the one candidate URL whose title shares the most
+// words (3+ letters) with the application's role, for the company-name
+// fallbacks that run only when the report itself carries no URL.
+//
+// It returns "" rather than guess: when no candidate shares a role word, or
+// two candidates tie for the best score. A company can have 20 applications
+// (plans/10-07-26_report-number-as-id.md), so "the company's only listing" or
+// "the first listing" is often a different role's posting — and a wrong link
+// shown as if it were this application's is worse than no link. Shared by
+// both fallbacks so the rule cannot drift between them.
+func roleMatchedURL(role string, candidates []urlCandidate) string {
+	words := strings.Fields(strings.ToLower(role))
+	best, bestScore, tied := "", 0, false
+	for _, c := range candidates {
+		title := strings.ToLower(c.title)
+		score := 0
+		for _, w := range words {
+			if len(w) > 2 && strings.Contains(title, w) {
+				score++
 			}
-			apps[i].JobURL = best
+		}
+		switch {
+		case score > bestScore:
+			best, bestScore, tied = c.url, score, false
+		case score == bestScore && score > 0 && c.url != best:
+			tied = true
 		}
 	}
+	if bestScore == 0 || tied {
+		return ""
+	}
+	return best
 }
 
 // ComputeMetrics calculates aggregate metrics from applications.
