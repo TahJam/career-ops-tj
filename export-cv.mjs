@@ -4,7 +4,7 @@
  * export-cv.mjs — copy a report's tailored CV PDF to a fixed upload path.
  *
  * Tailored CVs land in output/ under report-specific names
- * (output/cv-{candidate}-{company}-{NNN}-{date}.pdf). Application forms want
+ * (output/cv-{company-slug}-{NNN}.pdf). Application forms want
  * one clean file name. This copies the PDF that data/pdf-index.tsv records for
  * a report to the path in config/profile.yml `cv.export_path`, or to a
  * `--out` override, and prints what it copied so it can be checked before
