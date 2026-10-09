@@ -9764,6 +9764,57 @@ try {
   fail(`URL rediscovery tests crashed: ${e.message}`);
 }
 
+// ── BATCH RUNNER SURVIVES A REFUSED MERGE ───────────────────────
+// merge-tracker exits 1 when it refuses a TSV whose number breaks the
+// report-number rule (the rest still merge). batch-runner.sh runs under
+// `set -euo pipefail`, so an unguarded call aborted reconcile, verify, and the
+// batch summary for every other row (PR #7 review [2]).
+console.log('\nBatch runner: refused merge does not abort the run');
+try {
+  const tmp = mkdtempSync(join(tmpdir(), 'co-batch-refused-merge-'));
+  const batchDir = join(tmp, 'batch');
+  const fakeBin = join(tmp, 'bin');
+  mkdirSync(batchDir, { recursive: true });
+  mkdirSync(join(tmp, 'reports'), { recursive: true });
+  mkdirSync(join(tmp, 'data'), { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  if (process.platform === 'win32') {
+    try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
+  } else {
+    execFileSync('chmod', ['+x', join(batchDir, 'batch-runner.sh')]);
+  }
+  // merge-tracker refuses a row and exits 1; the later steps must still run.
+  writeFileSync(join(tmp, 'merge-tracker.mjs'), 'console.log("merge fixture"); process.exit(1);\n');
+  writeFileSync(join(tmp, 'reconcile-pipeline.mjs'), 'console.log("reconcile fixture");\n');
+  writeFileSync(join(tmp, 'verify-pipeline.mjs'), 'console.log("verify fixture");\n');
+  writeFileSync(join(batchDir, 'batch-prompt.md'), 'URL={{URL}}\n');
+  writeFileSync(join(batchDir, 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/one\tfixture\t-\n');
+  writeFileSync(join(fakeBin, 'claude'), [
+    '#!/usr/bin/env bash',
+    'echo "You\\x27ve hit your session limit · resets 12:30pm (Asia/Taipei)"',
+    'exit 1',
+  ].join('\n') + '\n');
+  if (process.platform === 'win32') {
+    try { execFileSync(getBash(), ['-c', 'chmod +x bin/claude'], { cwd: tmp }); } catch {}
+  } else {
+    execFileSync('chmod', ['+x', join(fakeBin, 'claude')]);
+  }
+  const env = { ...process.env, PATH: `${fakeBin}${delimiter}${process.env.PATH}` };
+  const out = run(getBash(), [toBashPath(join(batchDir, 'batch-runner.sh')), '--parallel', '1', '--rate-limit-sleep', '0'], {
+    cwd: tmp, env, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (out !== null && out.includes('merge fixture') && out.includes('refused some rows')
+      && out.includes('verify fixture') && out.includes('=== Batch Summary ===')) {
+    pass('a refused merge is reported and reconcile, verify, and the summary still run');
+  } else {
+    fail(`batch runner stopped at the refused merge: ${JSON.stringify((out ?? '(non-zero exit)').slice(-300))}`);
+  }
+  rmSync(tmp, { recursive: true, force: true });
+} catch (e) {
+  fail(`batch runner refused-merge test crashed: ${e.message}`);
+}
+
 // ── 13. BATCH RATE-LIMIT PAUSE ──────────────────────────────────
 
 console.log('\n13. Batch rate-limit pause');
