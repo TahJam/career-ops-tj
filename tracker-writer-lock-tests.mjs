@@ -305,7 +305,7 @@ await runWhileLocked({
 await runWhileLocked({
   name: 'set-status',
   script: 'set-status.mjs',
-  args: ['--row', '1', 'Applied', '--note', 'sent CV'],
+  args: ['1', 'Applied', '--note', 'sent CV'],
   content: trackerTable([
     '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | [1](reports/001-acme.md) | seed |',
   ]),

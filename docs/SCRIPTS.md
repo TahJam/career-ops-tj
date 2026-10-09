@@ -838,7 +838,7 @@ These have no `npm run` binding — modes and agents call them with
 
 | Invocation | Purpose |
 |------------|---------|
-| `node set-status.mjs <report#\|company> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
+| `node set-status.mjs <report#> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
 | `node followup-cadence.mjs [--summary]` | Follow-up cadence per active application; flags overdue entries |
 | `node followup-seed.mjs [--backfill]` | Seed `data/follow-ups.md` with a pinned first follow-up date when a row turns Applied |
 | `node reply-watch.mjs` | Classify employer replies from `data/reply-candidates.json`, match to tracker rows, print a review digest |
@@ -859,25 +859,18 @@ These have no `npm run` binding — modes and agents call them with
 Canonical tracker write path: strict `states.yml` validation, shared lock, atomic write. Modes and agents call this instead of hand-editing `applications.md`.
 
 ```bash
-node set-status.mjs <report#|company> <state> [--note "..."] [--force] [--dry-run]
-node set-status.mjs --row N <state> [--note "..."]          # explicit tracker row ID
-node set-status.mjs --report N <state> [--note "..."]       # row whose Report cell links report #N
-node set-status.mjs --row 12 Applied
-node set-status.mjs --report 345 Applied
+node set-status.mjs <report#> <state> [--note "..."] [--on YYYY-MM-DD] [--dry-run] [--json]
+node set-status.mjs 345 Applied
+node set-status.mjs 345 Interview --note "phone screen booked" --on 2026-10-08
 ```
 
-A bare number is ambiguous once tracker row IDs and report IDs diverge, so an explicit selector disambiguates which number space you mean:
-
-- `--row N` selects the row whose `#` cell is `N`.
-- `--report N` selects the row whose `Report` cell links report `N`.
-
-`--row` and `--report` are mutually exclusive. Because an explicit selector answers the report-mismatch guard rather than overriding it, `--row` bypasses that guard without needing `--force` (which silences the check while the ambiguity is still real).
+The selector is the report number: the `NNN` in `reports/NNN-{company-slug}-{date}.md`, resolved through each row's Report link. `verify-pipeline.mjs` keeps every row's `#` equal to its report number, so there is one number space. Company names are refused rather than matched — one company can have many rows. Look the number up first with `node find.mjs "<company>"`.
 
 Exit codes:
 
-- `1` for an invalid or conflicting selector, or a non-canonical state.
-- `2` when the selector matches no tracker row.
-- `3` when a bare numeric selector triggers the report-number mismatch guard (`report-number-mismatch`).
+- `1` for a usage error (including a company name as the selector) or a non-canonical state.
+- `2` when no tracker row links that report number.
+- `3` when two rows link the same report (a tracker data bug `verify-pipeline.mjs` flags).
 
 ---
 
