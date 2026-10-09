@@ -441,3 +441,57 @@ const TRACKER_DUP_REPORT = `# Applications Tracker
     }
   }
 }
+
+// --pdf records a PDF no generator wrote (a Canva export) in data/pdf-index.tsv,
+// so export-cv.mjs and find.mjs can find it (plans/10-07-26_report-number-as-id.md).
+// The index goes through CAREER_OPS_PDF_INDEX so the live one is never touched.
+{
+  const sandbox = makeSandbox(TRACKER_9);
+  const outDir = mkdtempSync(join(ROOT, 'output', 'markpdf-test-'));
+  const index = join(sandbox.dir, 'pdf-index.tsv');
+  const env = { CAREER_OPS_PDF_INDEX: index };
+  const pdf = join(outDir, 'cv-acme-001-canva.pdf');
+  writeFileSync(pdf, '%PDF-1.4\n%%EOF\n');
+  const relPdf = pdf.slice(ROOT.length + 1).split('\\').join('/');
+  const indexRows = () => {
+    try { return readFileSync(index, 'utf-8').split('\n').filter(l => l && !l.startsWith('#')); } catch { return null; }
+  };
+  try {
+    const dry = runMarkPdfReady(['1', '--pdf', pdf, '--dry-run', '--json'], sandbox, env);
+    if (dry.code === 0 && indexRows() === null && readTracker(sandbox).includes('| ❌ | [1]')) {
+      pass('--pdf with --dry-run writes neither the index nor the tracker');
+    } else {
+      fail(`--pdf --dry-run wrote something: code=${dry.code} rows=${JSON.stringify(indexRows())}`);
+    }
+
+    const r = runMarkPdfReady(['1', `--pdf=${pdf}`, '--json'], sandbox, env);
+    const rows = indexRows() || [];
+    const fields = (rows[0] || '').split('\t');
+    let parsed = null;
+    try { parsed = JSON.parse(r.stdout); } catch { /* asserted below */ }
+    if (r.code === 0 && rows.length === 1 && fields[0] === '1' && fields[1] === relPdf && fields[2] === ''
+        && parsed?.recorded === true && readTracker(sandbox).includes('| ✅ | [1]')) {
+      pass('--pdf records the file for the report (blank html column) and flips the PDF cell');
+    } else {
+      fail(`--pdf did not record as expected: code=${r.code} rows=${JSON.stringify(rows)}\n${r.stdout}${r.stderr}`);
+    }
+
+    const bad = [
+      ['a wrong extension', join(outDir, 'cv.png'), true],
+      ['a missing file', join(outDir, 'absent.pdf'), false],
+      ['a path outside career-ops', join(sandbox.dir, 'outside.pdf'), true],
+    ];
+    for (const [label, path, create] of bad) {
+      if (create) writeFileSync(path, 'x');
+      const res = runMarkPdfReady(['2', '--pdf', path], sandbox, env);
+      if (res.code === 1 && (indexRows() || []).length === 1) {
+        pass(`--pdf rejects ${label} before touching anything`);
+      } else {
+        fail(`--pdf accepted ${label}: code=${res.code}\n${res.stdout}${res.stderr}`);
+      }
+    }
+  } finally {
+    rmSync(sandbox.dir, { recursive: true, force: true });
+    rmSync(outDir, { recursive: true, force: true });
+  }
+}
