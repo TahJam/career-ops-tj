@@ -19,11 +19,12 @@
  * the candidate verbally committed to, in a specific interview round, to a
  * specific interviewer — so a later round doesn't accidentally contradict it.
  * They carry no trust tier and never participate in the fold/gap math above;
- * look them up with getStatedObservations() or `--stated-for <tracker#>`.
+ * look them up with getStatedObservations() or `--stated-for <report#>`
+ * (the tracker # is the report number; verify-pipeline.mjs Check 14).
  *
  * Run: node salary-gap.mjs             (JSON)
  *      node salary-gap.mjs --summary   (human-readable)
- *      node salary-gap.mjs --stated-for <tracker#>   (prior stated-comp observations, JSON)
+ *      node salary-gap.mjs --stated-for <report#>    (prior stated-comp observations, JSON)
  *      node salary-gap.mjs --self-test
  */
 
@@ -670,7 +671,7 @@ function main() {
 
   if (statedForFlagIdx !== -1) {
     if (!statedForNum) {
-      console.error('Usage: node salary-gap.mjs --stated-for <tracker#>');
+      console.error('Usage: node salary-gap.mjs --stated-for <report#>');
       process.exit(1);
     }
     const { observations } = collectSources();

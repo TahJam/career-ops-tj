@@ -258,7 +258,7 @@ Folds compensation observations into per-application desired/advertised/actual v
 ```bash
 node salary-gap.mjs             # JSON
 node salary-gap.mjs --summary   # table + data-quality section
-node salary-gap.mjs --stated-for <tracker#>   # prior `stated` observations for one tracker#, JSON
+node salary-gap.mjs --stated-for <report#>    # prior `stated` observations for one application, JSON
 node salary-gap.mjs --self-test
 ```
 
