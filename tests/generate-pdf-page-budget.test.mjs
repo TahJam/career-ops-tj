@@ -27,6 +27,9 @@ copyFileSync(join(ROOT, 'generate-pdf.mjs'), script);
 // theming, #1837); copy it into the sandbox too or the isolated script fails
 // to load with ERR_MODULE_NOT_FOUND before it can parse any --max-pages arg.
 copyFileSync(join(ROOT, 'theme-style.mjs'), join(sandbox, 'theme-style.mjs'));
+// ...and lib/pdf-manifest.mjs, the shared data/pdf-index.tsv writer.
+mkdirSync(join(sandbox, 'lib'), { recursive: true });
+copyFileSync(join(ROOT, 'lib', 'pdf-manifest.mjs'), join(sandbox, 'lib', 'pdf-manifest.mjs'));
 mkdirSync(playwrightStub, { recursive: true });
 writeFileSync(join(playwrightStub, 'package.json'), JSON.stringify({
   name: 'playwright',
