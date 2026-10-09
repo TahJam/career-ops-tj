@@ -21,7 +21,7 @@ import { resolve, basename, dirname, join } from 'path';
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { updatePDFManifest } from './lib/pdf-manifest.mjs';
+import { updatePDFManifest, repoRelativeManifestPath } from './lib/pdf-manifest.mjs';
 
 const MIN_SECTIONS = 4;
 
@@ -230,13 +230,19 @@ export async function compileLatexFile(absPath, content, outputPath, compileOnly
 async function main() {
   const rawArgs = process.argv.slice(2);
   const compileOnly = rawArgs.includes('--compile-only');
-  let reportNum = '';
+  // null = no --report given; any given value (even empty) is validated below,
+  // so a bare `--report` fails loudly instead of silently recording nothing.
+  let reportNum = null;
   const args = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
     if (a === '--compile-only') continue;
     if (a.startsWith('--report=')) reportNum = a.slice('--report='.length);
-    else if (a === '--report') reportNum = rawArgs[++i] ?? '';
+    else if (a === '--report') {
+      const value = rawArgs[i + 1];
+      reportNum = value === undefined || value.startsWith('--') ? '' : value;
+      if (reportNum) i++;
+    }
     else args.push(a);
   }
   const inputPath = args[0];
@@ -246,8 +252,10 @@ async function main() {
     console.error('Usage: node generate-latex.mjs <input.tex> [output.pdf] [--compile-only] [--report=NNN]');
     process.exit(1);
   }
-  if (reportNum && !/^\d+$/.test(reportNum)) {
-    console.error(`Invalid --report "${reportNum}". Use the report number, e.g. --report=018`);
+  if (reportNum !== null && !/^\d+$/.test(reportNum)) {
+    console.error(reportNum
+      ? `Invalid --report "${reportNum}". Use the report number, e.g. --report=018`
+      : 'Missing value for --report. Use the report number, e.g. --report=018');
     process.exit(1);
   }
 
@@ -264,8 +272,17 @@ async function main() {
   // Record only a PDF that actually landed. The html column stays blank: the
   // dashboard's D key re-renders that column with generate-pdf.mjs, which
   // cannot render a .tex source.
+  // pdf-index.tsv only holds paths inside career-ops (every reader resolves
+  // them against the repo root, and the dashboard drops anything else), so a
+  // PDF written elsewhere compiles but is not recorded — the same rule
+  // mark-pdf-ready.mjs --pdf enforces.
   if (reportNum && report.compiled && report.pdf?.path) {
-    report.manifest = updatePDFManifest(reportNum, report.pdf.path, '', '');
+    if (repoRelativeManifestPath(report.pdf.path)) {
+      report.manifest = updatePDFManifest(reportNum, report.pdf.path, '', '');
+    } else {
+      report.manifestSkipped = 'pdf is outside the career-ops directory';
+      console.error(`⚠️  Not recording ${report.pdf.path} for report ${reportNum} in data/pdf-index.tsv: it is outside the career-ops directory. Write the PDF under output/ to record it.`);
+    }
   }
   console.log(JSON.stringify(report, null, 2));
   process.exit(report.compiled ? 0 : (report.valid ? 1 : 1));

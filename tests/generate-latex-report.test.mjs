@@ -65,6 +65,42 @@ try {
   } catch { rejected = true; }
   if (rejected) pass('a non-numeric --report is rejected');
   else fail('generate-latex.mjs accepted --report=abc');
+
+  // A --report with no value must fail, not exit 0 having recorded nothing
+  // (PR #7 review [3]): bare at the end, `--report=`, or followed by a flag.
+  rmSync(index, { force: true });
+  for (const args of [[tex, pdf, '--compile-only', '--report'], [tex, pdf, '--report=', '--compile-only'], [tex, pdf, '--report', '--compile-only']]) {
+    let failedLoudly = false;
+    try {
+      execFileSync(NODE, [join(ROOT, 'generate-latex.mjs'), ...args], { env, encoding: 'utf-8', stdio: 'pipe' });
+    } catch (e) {
+      failedLoudly = e.status === 1 && /Missing value for --report/.test(String(e.stderr));
+    }
+    let wroteIndex = true;
+    try { readFileSync(index); } catch { wroteIndex = false; }
+    if (failedLoudly && !wroteIndex) pass(`--report with no value fails loudly (${args.slice(2).join(' ')})`);
+    else fail(`--report with no value was accepted (${args.slice(2).join(' ')})`);
+  }
+
+  // A PDF outside career-ops compiles but is not recorded: index paths are
+  // resolved against the repo root, and the dashboard drops anything else.
+  const outsidePdf = join(work, 'outside.pdf');
+  let outsideOut = null;
+  let outsideErr = '';
+  try {
+    outsideOut = execFileSync(NODE, [join(ROOT, 'generate-latex.mjs'), tex, outsidePdf, '--compile-only', '--report=042'], { env, encoding: 'utf-8', stdio: 'pipe' });
+  } catch (e) {
+    outsideErr = String(e.stderr || e.message);
+  }
+  let outsideIndexed = true;
+  try { readFileSync(index); } catch { outsideIndexed = false; }
+  let outsideReport = null;
+  try { outsideReport = JSON.parse(outsideOut); } catch { /* asserted below */ }
+  if (outsideReport?.compiled === true && !outsideReport.manifest && outsideReport.manifestSkipped && !outsideIndexed) {
+    pass('an out-of-repo PDF compiles but is not recorded in pdf-index.tsv');
+  } else {
+    fail(`out-of-repo PDF handled wrong: indexed=${outsideIndexed} report=${outsideOut}${outsideErr}`);
+  }
 } catch (e) {
   fail(`generate-latex --report test crashed: ${e.message}`);
 } finally {
