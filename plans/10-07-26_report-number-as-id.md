@@ -311,6 +311,18 @@ existing failure, and the scripts come before the mode text that documents them.
 
 ---
 
+## PR #7 review round (2026-10-09)
+
+The automated code review resolved `#7` against the upstream repo and reviewed a different PR, so its
+findings were discarded and the diff was reviewed by hand at `eda2d6c`. Three findings, all fixed, each
+with a test confirmed to fail on the unfixed code:
+
+| # | Finding | Fix |
+|---|---|---|
+| [1] | `merge-tracker`'s re-evaluation path (same company+role, new report number) kept the row's old `#` but wrote the new report link, breaking Check 14 on a routine re-eval. | bbd8074 — the row keeps its own report link; a different report is linked from the `Re-eval …` note. |
+| [2] | `batch-runner.sh:760` called `merge-tracker` unguarded under `set -euo pipefail`, so one refused TSV skipped reconcile, verify, and the batch summary. | e16b9ce — `|| echo` guard like its sibling steps; `merge-tracker` still exits 1 for direct callers. |
+| [3] | `generate-latex --report` recorded out-of-repo PDF paths and silently ignored a bare `--report`. | 29f361b — a `--report` with no value is a usage error; a PDF outside career-ops compiles but is not recorded (warning on stderr, `manifestSkipped` in the JSON). |
+
 ## Spike results (2026-10-09)
 
 The riskiest changes were prototyped on branch `feat/report-number-as-id` in a separate worktree that
