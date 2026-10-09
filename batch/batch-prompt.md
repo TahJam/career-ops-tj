@@ -334,7 +334,7 @@ Report header:
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **Work Auth:** {✅ Sponsors | ➖ Not needed | ⚠️ Unstated | ⛔ No sponsorship}
 **URL:** {{URL}}
-**PDF:** {output/cv-{company-slug}-{{REPORT_NUM}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {company-slug} to create on demand`}
+**PDF:** {output/cv-{company-slug}-{{REPORT_NUM}}.pdf if score >= resolved auto_pdf_score_threshold, otherwise `not generated — run /career-ops pdf {{REPORT_NUM}} to create on demand`}
 **Batch ID:** {{ID}}
 ---
 ```
@@ -398,7 +398,7 @@ Read `config/profile.yml` and resolve `auto_pdf_score_threshold`. If absent, def
 Only generate the PDF when the score from Step 2 is greater than or equal to the threshold. If the score is below the threshold:
 
 - Skip PDF generation.
-- In the report header, write `**PDF:** not generated — run /career-ops pdf {company-slug} to create on demand`.
+- In the report header, write `**PDF:** not generated — run /career-ops pdf {{REPORT_NUM}} to create on demand`.
 - In Step 5, use `pdf_emoji` = `❌`.
 - In Step 6, set `"pdf": null`.
 

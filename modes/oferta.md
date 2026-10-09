@@ -438,7 +438,7 @@ Mirror the block into `## Machine Summary` as a `risk_summary:` map (exact key n
 
 ## Cover Letter Draft (auto-generated after Block G)
 
-After saving the report and recording in the tracker, append a cover letter draft to the report file under `## Cover Letter Draft`. This is a starting point — not the final letter. The user completes it via `/career-ops cover {slug}`.
+After saving the report and recording in the tracker, append a cover letter draft to the report file under `## Cover Letter Draft`. This is a starting point — not the final letter. The user completes it via `/career-ops cover {###}` (this report's number).
 
 **How to generate the draft:**
 
@@ -454,7 +454,7 @@ After saving the report and recording in the tracker, append a cover letter draf
 ```markdown
 ## Cover Letter Draft
 
-> Draft generated at evaluation time. Complete via `/career-ops cover {slug}` to fill in angles, confirm research, and generate the PDF.
+> Draft generated at evaluation time. Complete via `/career-ops cover {###}` to fill in angles, confirm research, and generate the PDF.
 > Gaps flagged below — address them during the cover flow.
 
 ---
@@ -486,7 +486,7 @@ I am happy to discuss further at your convenience.
 {8-10 exact phrases from the JD}
 
 ---
-*Run `/career-ops cover {slug}` to complete angles, confirm company research, and generate the PDF.*
+*Run `/career-ops cover {###}` to complete angles, confirm company research, and generate the PDF.*
 ```
 
 Apply all language rules from `_writing.md` Professional Writing section to the draft content. No em dashes, no buzzwords, active voice, concrete claims only.

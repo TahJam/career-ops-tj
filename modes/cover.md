@@ -2,7 +2,7 @@
 
 Generates a tailored cover letter for any candidate from a job description.
 Works in two modes:
-- **Slug mode:** `/career-ops cover {slug}` — loads the existing evaluation report draft as a starting point
+- **Report mode:** `/career-ops cover {NNN}` — loads report `{NNN}`'s evaluation and its cover letter draft as a starting point. `{NNN}` is the report number; a company name or slug is not accepted (AGENTS.md → Selecting an Application).
 - **Paste mode:** `/career-ops cover` or JD pasted directly — starts from scratch
 
 ---
@@ -14,7 +14,8 @@ Before doing anything, confirm a job description is present.
 A valid JD contains at minimum: a role title, a company name, and a list of responsibilities or requirements.
 
 - **No JD present** → Stop. Say: "Please paste the job description — I need it to tailor the letter."
-- **Slug provided** → Read `reports/` to find the matching report. Extract the `## Cover Letter Draft` section as a starting point. Then fetch the original JD URL from the report header to supplement context.
+- **Report number provided** → Read `reports/{NNN}-*.md` (exactly one report has that number). Extract the `## Cover Letter Draft` section as a starting point. Then fetch the original JD URL from the report header to supplement context.
+- **Company name or slug provided instead** → Do not search `reports/` by name — one company can have many reports. Run `node find.mjs "<name>"`, show the matching rows, and wait for the user to give the report number.
 - **JD present** → Proceed to Step 1.
 
 Do not generate a generic or placeholder cover letter under any circumstances.
@@ -312,17 +313,19 @@ Assemble the JSON payload:
     "closing": "{approved closing}",
     "language_closing": "{approved language sentence or null}"
   },
-  "output_path": "output/{company-slug}-{role-slug}-cover.pdf"
+  "output_path": "output/{company-slug}-{role-slug}-{NNN}-cover.pdf"
 }
 ```
 
 Each `achievements[].lead` must be a bare phrase with no trailing comma or other punctuation — `generate-cover-letter.mjs` appends the comma when rendering (see Step 7).
 
-Write payload to `/tmp/cover-payload-{company-slug}.json`.
+`{NNN}` is the report number in report mode. It keeps two cover letters for roles at the same company apart — both the PDF and the payload below need it. In paste mode with no report, drop `-{NNN}` from the PDF name and use `{role-slug}` in its place in the payload name.
+
+Write payload to `/tmp/cover-payload-{company-slug}-{NNN}.json`. It is written here and read in the next step, so a second letter for the same company must never share its name — the render would carry the other role's content.
 
 Run:
 ```bash
-node generate-cover-letter.mjs --payload /tmp/cover-payload-{company-slug}.json
+node generate-cover-letter.mjs --payload /tmp/cover-payload-{company-slug}-{NNN}.json
 ```
 
 Report the output path and file size.
@@ -339,11 +342,11 @@ After the PDF is confirmed, add a brief note:
 
 ---
 
-## Slug mode specifics
+## Report mode specifics
 
-When invoked as `/career-ops cover {slug}`:
+When invoked as `/career-ops cover {NNN}`:
 
-1. Find the matching report in `reports/` by slug
+1. Load `reports/{NNN}-*.md` — the one report with that number
 2. Extract the `## Cover Letter Draft` section — use it as a pre-populated starting point for the draft
 3. Run all steps as normal (research, keywords, prompts, gaps) — the draft is a starting point, not the final output
 4. When presenting the draft in Step 8, show what was auto-generated and what was changed based on the user's answers

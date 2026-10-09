@@ -1,5 +1,11 @@
 # Mode: pdf — ATS-Optimized PDF Generation
 
+## Invocation
+
+- `/career-ops pdf {NNN}` — tailor a CV for report `{NNN}` (the report number, as in the `**PDF:** not generated — run /career-ops pdf {NNN}` line of a report header). Read `reports/{NNN}-*.md` for the JD, archetype, and gaps; its filename gives the `{company-slug}`, and `{NNN}` is the value passed to `--report` in step 20. `batch-tailor.mjs` workers receive the same report number in their prompt.
+- `/career-ops pdf` with a pasted JD and no report — a one-off CV (see the one-off rule under step 20).
+- A company name or slug is not a selector: run `node find.mjs "<name>"`, show the matches, and wait for the user to give the report number (AGENTS.md → Selecting an Application).
+
 ## Full pipeline
 
 ## Application-scoped artifacts
@@ -322,7 +328,7 @@ CV PDF generated: output/{path}
 
 Want a cover letter for this role too?
 - Say "yes" or "cover letter" to generate one now
-- Or run `/career-ops cover {slug}` later
+- Or run `/career-ops cover {NNN}` later
 ```
 
 Apply `voice-dna.md` (if present) to the cover letter — full guardrail, conversational voice included (Tier 1 + Tier 2). The CV PDF itself stays Tier 1 only (formal ATS register). See `_writing.md` → Voice DNA.
