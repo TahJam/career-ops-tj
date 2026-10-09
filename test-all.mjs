@@ -7251,6 +7251,60 @@ try {
 // A tracker # must be a unique row id. Two rows sharing a # is never
 // legitimate (unlike Check 2's company+role dedup, which can false-positive
 // on a genuine re-application) — verify-pipeline must flag it as an error.
+// ── VERIFY-PIPELINE ONE NUMBER SPACE (Check 14) ─────────────────
+// A bare number means the report number everywhere (set-status, outcome,
+// export-cv...), which holds only while each row links exactly one report
+// whose number equals the row's # (plans/10-07-26_report-number-as-id.md).
+console.log('\n🧪 Testing verify-pipeline one-number-space check (Check 14)...');
+try {
+  const nsTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-numspace-'));
+  try {
+    mkdirSync(join(nsTmp, 'reports'));
+    for (const f of ['001-acme-2026-01-01.md', '002-globex-2026-01-02.md', '004-initech-2026-01-04.md', '005-hooli-2026-01-05.md']) {
+      writeFileSync(join(nsTmp, 'reports', f), '# r\n');
+    }
+    const header = '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n';
+    const runVerify = (rows) => {
+      const tracker = join(nsTmp, 'applications.md');
+      writeFileSync(tracker, header + rows.join('\n') + '\n');
+      try {
+        return { code: 0, out: execFileSync(NODE, ['verify-pipeline.mjs'], { cwd: ROOT, env: { ...process.env, CAREER_OPS_TRACKER: tracker }, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }) };
+      } catch (e) {
+        return { code: e.status, out: (e.stdout || '').toString() };
+      }
+    };
+
+    const good = runVerify([
+      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | [1](reports/001-acme-2026-01-01.md) | — |',
+    ]);
+    if (good.out.includes('Every row # equals its report number')) {
+      pass('Check 14 passes a row whose # equals its report number');
+    } else {
+      fail(`Check 14 did not pass a matching row\n${good.out}`);
+    }
+
+    const bad = runVerify([
+      '| 3 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | [2](reports/002-globex-2026-01-02.md) | — |',
+      '| 6 | 2026-01-03 | Umbrella | Backfill | N/A | Applied | ❌ | — | — |',
+      '| 4 | 2026-01-04 | Initech | SE | 3.5/5 | Evaluated | ❌ | [4](reports/004-initech-2026-01-04.md), [5](reports/005-hooli-2026-01-05.md) | — |',
+    ]);
+    if (bad.code === 1
+        && bad.out.includes('#3 (Globex — Analyst): links report 2')
+        && bad.out.includes('#6 (Umbrella — Backfill): no report link')
+        && bad.out.includes('#4 (Initech — SE): links 2 reports')) {
+      pass('Check 14 errors on a wrong #, a missing report, and two reports, naming each row');
+    } else {
+      fail(`Check 14 did not flag each broken row (exit ${bad.code})\n${bad.out}`);
+    }
+  } finally {
+    rmSync(nsTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`verify-pipeline one-number-space test crashed: ${e.message}`);
+}
+
 console.log('\n🧪 Testing verify-pipeline duplicate tracker # check (#1704)...');
 try {
   const dupNumTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-dupnum-'));
@@ -7297,12 +7351,16 @@ try {
   const cleanTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-dupnum-clean-'));
   try {
     const cleanTracker = join(cleanTmp, 'applications.md');
+    // Each row links its own report (Check 14: a row's # is its report number).
+    mkdirSync(join(cleanTmp, 'reports'));
+    writeFileSync(join(cleanTmp, 'reports', '001-acme-2026-01-01.md'), '# Acme\n');
+    writeFileSync(join(cleanTmp, 'reports', '002-globex-2026-01-02.md'), '# Globex\n');
     writeFileSync(cleanTracker,
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | — | — |\n' +
-      '| 2 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | — | — |\n');
+      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | [1](reports/001-acme-2026-01-01.md) | — |\n' +
+      '| 2 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | [2](reports/002-globex-2026-01-02.md) | — |\n');
     const cleanOut = run(NODE, ['verify-pipeline.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: cleanTracker }, stdio: ['pipe', 'pipe', 'pipe'] });
     if (cleanOut !== null && cleanOut.includes('No duplicate tracker numbers')) {
       pass('clean tracker with unique numbers passes the duplicate-number check');
