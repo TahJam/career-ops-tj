@@ -2428,7 +2428,7 @@ if (
   offerPrepMode.includes('Step 8 — Reply draft (optional, on request)') &&
   offerPrepMode.includes('Never auto-generate') &&
   offerPrepMode.includes('no prep report, no reply draft') &&
-  offerPrepMode.includes('data/offers/{company-slug}/reply-draft-{YYYY-MM-DD}.md') &&
+  offerPrepMode.includes('data/offers/{NNN}-{company-slug}/reply-draft-{YYYY-MM-DD}.md') &&
   offerPrepMode.includes('trace back to a line in the prep report') &&
   offerPrepMode.includes('Never submit. Never send email. Never click send.') &&
   offerPrepMode.includes('never demands') &&

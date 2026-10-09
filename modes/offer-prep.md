@@ -50,10 +50,10 @@ It is NOT:
 
 1. `/career-ops offer-prep {pasted contract text}`
 2. `/career-ops offer-prep {path to PDF or file}` — e.g. a contract dropped
-   into `data/offers/{company-slug}/`
+   into `data/offers/{NNN}-{company-slug}/`
 3. `/career-ops offer-prep` — ask for the document
 4. Proactively: when a tracker row is being set to `Offer`, suggest this mode.
-5. `/career-ops offer-prep reply {company-slug}` — Step 8 on demand: draft
+5. `/career-ops offer-prep reply {NNN}` — Step 8 on demand: draft
    the negotiation reply email from an existing prep report.
 
 If the candidate asks "should I sign?": run the mode, and state plainly that
@@ -64,9 +64,14 @@ preparation for answering it, not the answer.
 
 ## Step 0 — Intake and gates
 
-- Identify company + role; match to the tracker row and evaluation report if
-  they exist (`data/applications.md`, `reports/`).
-- Store or keep the contract in `data/offers/{company-slug}/` (gitignored —
+- Identify which application the offer is for, by report number `{NNN}`:
+  take the company named on the contract, run `node find.mjs "<company>"`,
+  show the matching rows, and wait for the candidate to confirm the number
+  (AGENTS.md → Selecting an Application) — one company can have several
+  applications. That gives the tracker row and `reports/{NNN}-*.md`. An offer
+  for a role that was never tracked has no number; use `{company-slug}` alone
+  in the paths below.
+- Store or keep the contract in `data/offers/{NNN}-{company-slug}/` (gitignored —
   contracts are PII and never leave the machine).
 
 **Extraction gate:** before any analysis, quote back the document's
@@ -86,7 +91,7 @@ or by email that should be in this contract? (salary, bonus, equity, remote
 terms, start date, title)". Record **source, medium, and date** for each
 promise — an email promise and a verbal one generate different lawyer
 questions and different employer asks. Write the answers to
-`data/offers/{company-slug}/notes.md` and confirm them back. The consistency
+`data/offers/{NNN}-{company-slug}/notes.md` and confirm them back. The consistency
 check reads promises only from that file and from what the candidate states
 in this conversation.
 
@@ -252,7 +257,7 @@ Compare contract terms against:
 - the evaluation report for this company/role (comp block, remote
   designation, seniority) — found via the tracker row;
 - `config/profile.yml` targets and location policy;
-- `data/offers/{company-slug}/notes.md`.
+- `data/offers/{NNN}-{company-slug}/notes.md`.
 
 List every delta: what was recorded/targeted vs what the contract says, both
 quoted.
@@ -284,7 +289,7 @@ phrasing if present.
 
 ## Step 5 — Output
 
-Write `data/offers/{company-slug}/prep-{YYYY-MM-DD}.md`:
+Write `data/offers/{NNN}-{company-slug}/prep-{YYYY-MM-DD}.md`:
 
 ```markdown
 # Offer Prep — {Company} — {Role}
@@ -327,7 +332,7 @@ taking the list to a lawyer before signing.
 
 Update the existing row (never add a new one): status → `Offer` if not
 already; Notes column links the prep file relative to the tracker
-(`offers/{company-slug}/prep-{date}.md`). Canonical states per
+(`offers/{NNN}-{company-slug}/prep-{date}.md`). Canonical states per
 `templates/states.yml`.
 
 ## Step 8 — Reply draft (optional, on request)
@@ -337,7 +342,7 @@ email that raises these items with the employer?" Also runs on demand later
 (invocation 5, or the candidate asking in conversation). Never auto-generate
 — the candidate must ask or accept the offer.
 
-**Input gate (hard):** an existing `data/offers/{company-slug}/prep-{date}.md`
+**Input gate (hard):** an existing `data/offers/{NNN}-{company-slug}/prep-{date}.md`
 is required — no prep report, no reply draft; run the prep first. Use the
 most recent prep file for the company unless the candidate points at another.
 
@@ -363,7 +368,7 @@ report, add it to that section first, then draft.
   exclusively from the prep report and the current conversation — no other
   files. `voice-dna.md` above is a style channel, never a content source.
 
-Write `data/offers/{company-slug}/reply-draft-{YYYY-MM-DD}.md`:
+Write `data/offers/{NNN}-{company-slug}/reply-draft-{YYYY-MM-DD}.md`:
 
 ```markdown
 # Reply Draft — {Company} — {Role}
