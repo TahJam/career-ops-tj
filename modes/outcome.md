@@ -19,7 +19,7 @@ Record the outcome of an application conversationally, archive per-application a
 - `data/applications.md` — Application tracker
 - `cv.md` — Active CV (submitted CV snapshot)
 - `templates/states.yml` — Canonical tracker states
-- User input — Selector (report # or company name), outcome type, stage reached, verbatim feedback, notes
+- User input — Report number, outcome type, stage reached, verbatim feedback, notes. If the user names a company instead, run `node find.mjs "<company>"`, show the matching rows, and wait for them to give the report number — never pick a row from a name.
 
 ## Supported Outcomes & Tracker Mapping
 
@@ -38,17 +38,16 @@ Record the outcome of an application conversationally, archive per-application a
 Run the helper script:
 
 ```bash
-node outcome.mjs <report#|company> <outcome_type> [--stage "..."] [--feedback "..."] [--note "..."] [--role "..."]
+node outcome.mjs <report#> <outcome_type> [--stage "..."] [--feedback "..."] [--note "..."]
 ```
 
 ### Script CLI Options
 
-- `<report#|company>`: Application selector (# or company name)
+- `<report#>`: The report number (the NNN in `reports/NNN-…md`). Company names are refused (exit 1).
 - `<outcome_type>`: `interview_progress` | `offer_received` | `hired` | `offer_declined` | `rejected` | `no_response` | `interview_only`
 - `--stage "..."`: Specific interview stage reached (e.g. "Tech Screen", "System Design", "Final Round")
 - `--feedback "..."`: Verbatim feedback from recruiter or interviewer (never paraphrased)
 - `--note "..."`: Note to append to tracker row in `data/applications.md`
-- `--role "..."`: Disambiguate when multiple applications share the same company
 - `--cv "..."`: Custom CV file path (defaults to `cv.md`)
 - `--cover "..."`: Custom cover letter file path (if available)
 - `--url "..."`: Job posting URL (overrides auto-detection from tracker notes)

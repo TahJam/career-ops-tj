@@ -24,8 +24,9 @@ function setupTestEnvironment() {
 
 | # | Date | Company | Role | Score | Status | PDF | Report | Notes |
 |---|------|---------|------|-------|--------|-----|--------|-------|
-| 1 | 2026-07-01 | Acme Corp | Senior Backend Engineer | 4.5/5 | Applied | local:output/acme.pdf | local:reports/1-acme.md | Applied online |
-| 2 | 2026-07-02 | Beta Systems | Lead AI Architect | 4.8/5 | Interview | local:output/beta.pdf | local:reports/2-beta.md | Screen passed |
+| 1 | 2026-07-01 | Acme Corp | Senior Backend Engineer | 4.5/5 | Applied | local:output/acme.pdf | [1](../reports/001-acme-2026-07-01.md) | Applied online |
+| 2 | 2026-07-02 | Beta Systems | Lead AI Architect | 4.8/5 | Interview | local:output/beta.pdf | [2](../reports/002-beta-2026-07-02.md) | Screen passed |
+| 3 | 2026-07-03 | ? | Data Engineer | 4.0/5 | Applied | ❌ | [3](../reports/003-unknown-2026-07-03.md) | agency listing, employer unknown |
 `;
   writeFileSync(join(testDir, 'data', 'applications.md'), mockTracker);
   writeFileSync(join(testDir, 'cv.md'), '# Candidate CV\n\nSenior Engineer with 10 years experience.\n');
@@ -62,6 +63,30 @@ try {
     fail('Non-existent row selector should fail');
   } catch (err) {
     check('Non-existent row selector exits with code 2', err.status === 2);
+  }
+
+  // Test 3b: a company name is refused, never matched (plans/10-07-26_report-number-as-id.md).
+  // The old substring fallback matched the unknown-employer (?) row for ANY
+  // name — normalizeCompany('?') is '' and every string contains '' — so a
+  // typo silently recorded an outcome on row #3. Names now exit 1 untouched.
+  for (const name of ['Zzyzxco', 'Acme', '?']) {
+    const before = readFileSync(join(testDir, 'data', 'applications.md'), 'utf-8');
+    let status = 0;
+    let stderr = '';
+    try {
+      execFileSync(NODE, [OUTCOME_SCRIPT, name, 'rejected'], {
+        cwd: testDir,
+        env: { ...process.env, CAREER_OPS_TRACKER: join(testDir, 'data', 'applications.md') },
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      });
+    } catch (err) {
+      status = err.status;
+      stderr = String(err.stderr || '');
+    }
+    const after = readFileSync(join(testDir, 'data', 'applications.md'), 'utf-8');
+    check(`Company name "${name}" is refused (exit 1) without touching the tracker`,
+      status === 1 && /not a report number/.test(stderr) && after === before);
   }
 
   // Test 4: Dry-run mode
@@ -105,7 +130,7 @@ try {
   // Test 6: Append-only and idempotency with second outcome entry
   const outcome2Out = execFileSync(NODE, [
     OUTCOME_SCRIPT,
-    'Acme',
+    '1',
     'offer_received',
     '--stage', 'Final Offer',
     '--feedback', 'Received formal offer letter with comp package.',
