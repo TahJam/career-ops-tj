@@ -2718,11 +2718,15 @@ if (
 // reports 141, 144 and 145 (three different Perplexity roles, all Applied) all
 // claimed output/cv-candidate-perplexity-2026-09-02.pdf, of which one file
 // existed. The bug lives in prompt text, so only a text assertion catches its
-// removal.
+// removal. The name is cv-{company-slug}-{NNN} (plans/10-07-26_report-number-
+// as-id.md): no candidate segment, no date. The report header must name the
+// same PDF the worker writes; the two drifted once already (f0e76ac).
 if (
-  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html') &&
-  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf') &&
-  !/output\/cv-candidate-\{company-slug\}(?:-\{\{DATE\}\})?\.(?:html|pdf)/.test(batchPromptDoc) &&
+  batchPromptDoc.includes('output/cv-{company-slug}-{{REPORT_NUM}}.html') &&
+  batchPromptDoc.includes('output/cv-{company-slug}-{{REPORT_NUM}}.pdf \\') &&
+  batchPromptDoc.includes('**PDF:** {output/cv-{company-slug}-{{REPORT_NUM}}.pdf if score') &&
+  !/output\/cv-\{company-slug\}(?:-\{\{DATE\}\})?\.(?:html|pdf)/.test(batchPromptDoc) &&
+  !/output\/[^`\s]*\{candidate[^`\s]*\.(?:html|pdf)/.test(batchPromptDoc) &&
   batchPromptDoc.includes('Never drop `{{REPORT_NUM}}` from either filename')
 ) {
   pass('batch prompt keys tailored-CV filenames on the report number (no same-company overwrite)');
