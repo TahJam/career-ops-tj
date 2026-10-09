@@ -21,12 +21,12 @@ must review and send manually.
 
 Supported inputs:
 
-1. `/career-ops email {report-number-or-slug}`
+1. `/career-ops email {report#}`
    - Load the matching `reports/{NNN}-*.md`.
    - Use the report header, score, archetype, PDF status, and evaluation content.
    - If `data/pdf-index.tsv` contains a PDF for that report, mention it as the CV
      attachment candidate. If no PDF is indexed, say that the CV should be
-     generated first via `/career-ops pdf {slug}` or attached manually.
+     generated first via `/career-ops pdf {report#}` or attached manually.
 
 2. `/career-ops email {pasted JD}`
    - Use the pasted JD directly.
@@ -37,9 +37,11 @@ Supported inputs:
 3. `/career-ops email`
    - If there is a most recent evaluated tracker row, offer to draft from that
      row.
-   - If no usable context exists, ask for a report number, slug, or JD.
+   - If no usable context exists, ask for a report number or a JD. If the user
+     names a company instead, run `node find.mjs "<company>"`, show the matches,
+     and wait for the number (AGENTS.md → Selecting an Application).
 
-4. `/career-ops email stuck {report-number-or-slug}`
+4. `/career-ops email stuck {report#}`
    - Load the matching `reports/{NNN}-*.md` for company and role context.
    - Draft a process-stuck recovery email (see the dedicated section below).
    - Also trigger this variant conversationally when the user describes a
@@ -47,7 +49,7 @@ Supported inputs:
      can't submit the form", "the assessment link is dead", "the login loop
      won't let me back in". Confirm the variant before drafting if ambiguous.
 
-5. `/career-ops email noshow {report-number-or-slug}`
+5. `/career-ops email noshow {report#}`
    - Load the matching `reports/{NNN}-*.md` for company and role context.
    - Draft a confirmed-time no-show follow-up (see the dedicated section
      below).

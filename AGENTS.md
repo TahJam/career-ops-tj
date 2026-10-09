@@ -22,7 +22,7 @@ User-facing content (CV, cover letters, application emails, form answers, recrui
 - `cv.md` · `article-digest.md` · `config/profile.yml` · `modes/_profile.md` · `writing-samples/`
 - `modes/_custom.md` (procedural/style rules only — never introduces factual claims)
 - `voice-dna.md` (voice/style only — never introduces factual claims)
-- `interview-prep/story-bank.md` and `interview-prep/{company}-{role}.md` (the user's own STAR stories and prep notes — same trust level as `cv.md`; consumed by `interview` and `apply`/`match-star`)
+- `interview-prep/story-bank.md` and `interview-prep/{NNN}-{company}-{role}.md` (the user's own STAR stories and prep notes — same trust level as `cv.md`; consumed by `interview` and `apply`/`match-star`)
 
 Everything else is **out of scope for content generation**: auto-memory (see below), any directory outside the career-ops project (parent/sibling repos, other codebases on the machine), knowledge from other Claude Code projects on the same machine, and cross-session inferences not written into an in-scope file.
 
@@ -83,15 +83,16 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `templates/cv-template.tex` | LaTeX/Overleaf template for CVs |
 | `article-digest.md` | Compact proof points from portfolio (optional) |
 | `interview-prep/story-bank.md` | Accumulated STAR+R stories, built up via `interview-prep` runs (not at evaluation time) |
-| `interview-prep/{company}-{role}.md` | Company-specific interview intel reports |
+| `interview-prep/{NNN}-{company}-{role}.md` | Per-application interview intel reports (`{NNN}` = report number) |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
 | `export-cv.mjs` | Copies a report's tailored CV PDF (from `data/pdf-index.tsv`) to a fixed upload path — `cv.export_path` in `config/profile.yml`, or `npm run export-cv <report#> -- --out=<path>`; never modifies the source |
-| `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |
+| `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler; `--report=NNN` records the PDF in `data/pdf-index.tsv` so `export-cv.mjs` finds it |
 | `scan.mjs` | Zero-token portal scanner — hits Greenhouse/Ashby/Lever APIs directly, zero LLM cost |
 | `scan-ats-full.mjs` | Reverse-ATS keyword-first scanner over full public ATS datasets (Greenhouse/Lever/Ashby/Workday/iCIMS), filtered by portals.yml `title_filter`/`location_filter` — no company list needed; checkpoints every 500 companies, `--resume` continues an interrupted sweep |
 | `scan-interamt.mjs` | Playwright browser scanner for Interamt.de (German public sector portal — Apache Wicket, no REST API) |
 | `check-liveness.mjs` / `liveness-core.mjs` | Job posting liveness checker + shared logic (expired signals win over generic Apply text) |
-| `set-status.mjs` | Canonical CLI to update a tracker row: `node set-status.mjs <report#\|company> <State> [--note] [--force]` — strict states.yml validation, report-link mismatch guard, shared tracker lock, atomic write |
+| `set-status.mjs` | Canonical CLI to update a tracker row: `node set-status.mjs <report#> <State> [--note] [--on]` — the report number is the only selector (names are refused; look one up with `find.mjs`), strict states.yml validation, shared tracker lock, atomic write |
+| `find.mjs` | Read-only lookup: a company/role fragment or number → matching rows with report #, status, and PDF. The one sanctioned way to turn a name into a report number (see Selecting an Application) |
 | `invite-match.mjs` | Fuzzy-matches a pasted interview-invite email (company name, date, req ID) against `data/applications.md`, ranking candidates when a company has multiple tracker entries (JSON or `--summary` table output) |
 | `paste-reply.mjs` | Manual/no-Gmail input path into `reply-watch.mjs`'s classification pipeline — normalizes a pasted or file-provided email's subject/from/body into a candidate object and appends it to `data/reply-candidates.json` (never overwrites existing entries; never classifies or touches the tracker itself) |
 | `analyze-patterns.mjs` | Pattern analysis script (JSON output). Includes ATS channel analysis (per-vendor advance rate; motivated by Bommasani et al., Algorithmic Monocultures in Hiring, FAccT 2026). |
@@ -106,7 +107,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `assessment-log.mjs` | Skills-assessment event logger — `add` appends platform/subject/threshold/score + candidate-observed staleness note to `data/assessments.tsv` (JSON or `--summary`) |
 | `jd-skill-gap.mjs` | Zero-LLM JD skill-gap checker — classifies a JD's required skills against `cv.md` into existing / supportedByResume / gap so a CV can be tailored honestly (JSON or `--summary` output); never auto-adds a claim to `cv.md` |
 | `contacts.mjs` | Job-search phonebook → vCard 3.0 exporter — stable UIDs so re-imports update instead of duplicating on platforms that honor vCard UID (JSON, `--summary`, `--vcf`, `--caller-id`) |
-| `outcome.mjs` | Record application outcome, archive artifacts, and sync tracker (`node outcome.mjs <selector> <type>`) |
+| `outcome.mjs` | Record application outcome, archive artifacts, and sync tracker (`node outcome.mjs <report#> <type>`; names refused) |
 | `plugins/sheets/` | Google Sheets mirror (opt-in plugin) — reconciles `data/applications.md` into a Google Sheet you own. One argument-free command reconciles the whole tab, deciding by comparing values against the sheet — so a status changed via `set-status.mjs`, the dashboard, or by hand is all detected alike. `npm run sheets:sync:dry` previews, `npm run sheets:sync` writes. Never writes outside columns A:H, never inserts/deletes/sorts rows — see `plans/08-31-26_google-sheets-sync.md` |
 | `weekly-digest.mjs` | Rolls up `interview-prep/sessions/*.md` (default: current ISO week) into a per-company round summary, recurring competency-tag counts, and best-effort recurring 🔴 gaps from `question-bank.md` (JSON or `--summary`) |
 | `reports/` | Evaluation reports (format: `{###}-{company-slug}-{YYYY-MM-DD}.md`). Blocks A-F + G (Posting Legitimacy) + Risk Summary, plus `## Machine Summary` YAML for downstream scripts. Header includes `**Legitimacy:** {tier}`. |
@@ -258,6 +259,14 @@ Default modes are in `modes/` (English). This fork removed the 16 non-English la
 | Wants to queue a request for later / check the inbox between sessions | `agent-inbox` — append-only checklist drained next session; nothing auto-submits |
 | Wants to add a finished project, paper, or role to the CV | `add` — source-grounded preview, confirm-before-write; dedup + insertion via `add-entry.mjs` |
 
+### Selecting an Application (Report Number)
+
+**An application's ID is its report number** — the `NNN` in `reports/NNN-{company-slug}-{YYYY-MM-DD}.md`. It is also the row's `#` in `data/applications.md` (`verify-pipeline.mjs` Check 14 enforces that), so there is one number space. Every argument that selects an existing application — `/career-ops cover`, `pdf`, `email`, `interview-prep`, `interview/*`, `outcome`, `offer-prep reply`, and the scripts `set-status.mjs`, `outcome.mjs`, `mark-pdf-ready.mjs`, `export-cv.mjs` — takes that number.
+
+- **Never resolve a company name, role title, or slug to a row yourself**, not even as a fallback and not even when the company has one row. One company can have 20 applications; a name is a search, not an ID.
+- When the user gives a name instead of a number, run `node find.mjs "<name>"`, show the matching rows (number, company, role, status), and **wait for the user to give the number** before doing anything else.
+- **Names are still right where they are the input itself**, not a selector: a pasted reply or invite email (`reply-watch`, `invite-match.mjs`), a live application form (`apply`), a pasted JD or contract for something never evaluated, per-company aggregates (`company-history.mjs`, `interview-redflag`), and outside searches (`contacto`, `deep`). Whatever those match to a row is confirmed by number before anything is written.
+
 ### CV Source of Truth
 
 - `cv.md` in project root is the canonical CV
@@ -324,7 +333,7 @@ One TSV file per evaluation at `batch/tracker-additions/{num}-{company-slug}.tsv
 
 **Note:** In applications.md, score comes BEFORE status; `merge-tracker.mjs` handles the swap automatically.
 
-**Backfilled entries with no evaluation (#1799):** a row added retroactively without an evaluation must carry one of the recognized score sentinels — `N/A`, `—` (em dash), or `-` (hyphen) — never blank, never another placeholder. The column-swap guard (`looksLikeScoreCell` in `tracker-parse.mjs`, #1427) identifies the score column by content pattern (`X.X/5` or one of these sentinels); an unrecognized placeholder makes the row ambiguous and it is skipped with a warning.
+**Backfilled entries with no evaluation (#1799):** a row added retroactively without an evaluation must carry one of the recognized score sentinels — `N/A`, `—` (em dash), or `-` (hyphen) — never blank, never another placeholder. The column-swap guard (`looksLikeScoreCell` in `tracker-parse.mjs`, #1427) identifies the score column by content pattern (`X.X/5` or one of these sentinels); an unrecognized placeholder makes the row ambiguous and it is skipped with a warning. A backfilled row still needs a report: reserve a number (`node reserve-report-num.mjs`), write a short `reports/{num}-{company-slug}-{date}.md` stub recording what is known, and link it. `merge-tracker.mjs` refuses a row with no report link, or whose `num` differs from its report number, and leaves its TSV pending — a row's `#` is its report number (`verify-pipeline.mjs` Check 14).
 
 **Optional Via field (#1596):** applications through an agency/recruiter append a **tagged** extra field `via={Agency}` (e.g. `via=Hays`) after notes — never positional; the tag is mandatory. A single untagged extra keeps its legacy meaning (location). Unknown end employer → `?` as company (locale-invariant marker, never "Confidential") + a descriptor in notes. `merge-tracker.mjs` rejects ambiguous extras loudly; `--migrate-via` adds the column to an existing tracker.
 
@@ -335,7 +344,7 @@ One TSV file per evaluation at `batch/tracker-additions/{num}-{company-slug}.tsv
 ### Pipeline Integrity
 
 1. **NEVER edit applications.md to ADD new entries** -- write TSV in `batch/tracker-additions/` and let `merge-tracker.mjs` merge.
-2. **UPDATE status/notes of existing entries via `node set-status.mjs <report#|company> <State> [--note]`** — the canonical (locked, validated, atomic) write path. Do not hand-edit the table.
+2. **UPDATE status/notes of existing entries via `node set-status.mjs <report#> <State> [--note]`** — the canonical (locked, validated, atomic) write path. Do not hand-edit the table. It takes only the report number; for a company name, run `node find.mjs "<company>"` and confirm the number with the user first.
 3. All reports MUST include `**URL:**` in the header (between Score and PDF), and `**Legitimacy:** {tier}` (see Block G in `modes/oferta.md`).
 4. All statuses MUST be canonical (see `templates/states.yml`).
 5. Health check: `node verify-pipeline.mjs` · Normalize statuses: `node normalize-statuses.mjs` · Dedup: `node dedup-tracker.mjs`

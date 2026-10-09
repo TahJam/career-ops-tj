@@ -278,7 +278,7 @@ node openai-tailor.mjs \
 Once you have the tailored HTML file, the PDF generator uses Playwright to compile it into a tailored CV PDF.
 
 ```bash
-node generate-pdf.mjs output/cv-candidate-companyname-001.html output/cv-candidate-companyname-001-2026-07-07.pdf --format=letter --report=001
+node generate-pdf.mjs output/cv-companyname-001.html output/cv-companyname-001.pdf --format=letter --report=001
 ```
 
 The `001` in both filenames is the report number you pass to `--report`. Keep it: it is what stops two

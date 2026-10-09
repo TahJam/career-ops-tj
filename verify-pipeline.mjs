@@ -15,6 +15,8 @@
  * 10. Every report file has a tracker row referencing it (warning — see #1425)
  * 11. Via channel consistency (see #1596)
  * 12. No # value reused across 2+ tracker rows (error — see #1704)
+ * 13. Hybrid/onsite reports carry a normalized job_location (warning)
+ * 14. Every row's # equals the report number it links (error — one number space)
  *
  * Run: node career-ops/verify-pipeline.mjs
  */
@@ -22,7 +24,7 @@
 import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns } from './tracker-parse.mjs';
+import { looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { parseMachineSummary, checkJobLocation } from './lib/report-summary.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
@@ -439,6 +441,29 @@ if (missingJobLocation.length) {
   warn(`${missingJobLocation.length} report(s) have no work_mode / job_location yet: ${shown}${more}`);
 }
 if (badJobLocations === 0 && missingJobLocation.length === 0) ok('Job location keys valid in every report');
+
+// --- Check 14: One number space (plans/10-07-26_report-number-as-id.md) ---
+// A bare number means the report number everywhere in this fork: set-status,
+// outcome, followup-seed, salary-gap and export-cv all take one number and
+// trust that the tracker # and the report # are the same. That holds only
+// while every row links exactly one report whose number equals the row's #.
+// A row without a report, with two, or with a different number would make
+// "application N" mean two different things, so each is an error.
+let numberSpaceErrors = 0;
+for (const e of entries) {
+  const reportNums = extractTrackerReportNumbers(e.report);
+  if (reportNums.length === 0) {
+    error(`#${e.num} (${e.company} — ${e.role}): no report link; every row needs a report so its # is a report number`);
+    numberSpaceErrors++;
+  } else if (reportNums.length > 1) {
+    error(`#${e.num} (${e.company} — ${e.role}): links ${reportNums.length} reports (${reportNums.join(', ')}); a row must link exactly one`);
+    numberSpaceErrors++;
+  } else if (reportNums[0] !== e.num) {
+    error(`#${e.num} (${e.company} — ${e.role}): links report ${reportNums[0]}; the row # must equal its report number`);
+    numberSpaceErrors++;
+  }
+}
+if (numberSpaceErrors === 0) ok('Every row # equals its report number');
 
 // --- Summary ---
 console.log('\n' + '='.repeat(50));

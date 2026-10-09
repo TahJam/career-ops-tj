@@ -4,10 +4,11 @@
  * set-status-tests.mjs — regression tests for the set-status.mjs CLI (#1428).
  *
  * set-status.mjs is the canonical write path for tracker status updates, so
- * these tests pin down the full CLI contract: row resolution (by number, by
- * company, --role disambiguation), strict state validation against
- * templates/states.yml, idempotent note appends, dry-run, JSON output, exit
- * codes, and layout tolerance (9-col and 10-col Location trackers).
+ * these tests pin down the full CLI contract: row resolution (the report
+ * number, resolved through the Report cell; names refused), strict state
+ * validation against templates/states.yml, idempotent note appends, dry-run,
+ * JSON output, exit codes, and layout tolerance (9-col and 10-col Location
+ * trackers). See plans/10-07-26_report-number-as-id.md.
  *
  * Tests provision a throwaway tracker via the CAREER_OPS_TRACKER /
  * CAREER_OPS_TRACKER_LOCK env overrides (same sandbox pattern as
@@ -15,9 +16,9 @@
  *
  * Exit-code contract under test:
  *   0 — success (including no-op re-runs)
- *   1 — usage error or non-canonical state
- *   2 — row not found (bad number, unknown company)
- *   3 — ambiguous company match or numeric selector/report-link mismatch
+ *   1 — usage error (incl. a company name as the selector) or non-canonical state
+ *   2 — no row links that report number
+ *   3 — two rows link the same report (a tracker data bug)
  */
 
 import { execFileSync } from 'child_process';
@@ -86,23 +87,31 @@ const TRACKER_10 = `# Applications Tracker
 | 1 | 2026-06-01 | Initech | AI Engineer | Remote | 4.5/5 | Evaluated | ✅ | [1](../reports/001-initech-2026-06-01.md) | — |
 `;
 
-// Two unrelated rows share tracker number 5 (the #1704 bug: merge-tracker.mjs
-// once trusted a stale TSV number as-is when it was numerically ahead of that
-// run's max, even though the number was already used by an unrelated row
-// merged in a separate, earlier invocation).
-const TRACKER_DUP_NUM = `# Applications Tracker
+// Two unrelated rows link report 5 — a tracker data bug (verify-pipeline
+// Check 14 flags it). set-status must refuse to pick one.
+const TRACKER_DUP_REPORT = `# Applications Tracker
 
 | # | Date | Company | Role | Score | Status | PDF | Report | Notes |
 |---|------|---------|------|-------|--------|-----|--------|-------|
-| 5 | 2026-05-29 | University of Alberta | Curriculum Coordinator | 3.8/5 | Evaluated | ❌ | — | — |
-| 5 | 2026-06-03 | Esri Canada | Manager Talent and Organizational Development | 4.1/5 | Evaluated | ❌ | — | — |
+| 5 | 2026-05-29 | University of Alberta | Curriculum Coordinator | 3.8/5 | Evaluated | ❌ | [5](../reports/005-ualberta-2026-05-29.md) | — |
+| 6 | 2026-06-03 | Esri Canada | Manager Talent and Organizational Development | 4.1/5 | Evaluated | ❌ | [5](../reports/005-ualberta-2026-05-29.md) | — |
 `;
 
+// Row # and report link disagree (what merge-tracker's old renumbering made).
+// The selector is the report number, so it follows the Report cell.
 const TRACKER_REPORT_MISMATCH = `# Applications Tracker
 
 | # | Date | Company | Role | Score | Status | PDF | Report | Notes |
 |---|------|---------|------|-------|--------|-----|--------|-------|
 | 2 | 2026-06-02 | DriftCo | Platform Engineer | 4.0/5 | Evaluated | ✅ | [7](../reports/007-driftco-2026-06-02.md) | migrated badly |
+`;
+
+// A row with no report link has no report number, so nothing can select it.
+const TRACKER_NO_REPORT = `# Applications Tracker
+
+| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
+|---|------|---------|------|-------|--------|-----|--------|-------|
+| 8 | 2026-06-04 | Backfill Inc | Analyst | N/A | Applied | ❌ | — | pre-career-ops |
 `;
 
 // ── 1. Update by report number ──────────────────────────────────
@@ -123,124 +132,64 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 1b. Numeric selector refuses a tracker/report ID mismatch ───
+// ── 1b. The number resolves through the Report cell, not the # column ─
 {
   const sb = makeSandbox(TRACKER_REPORT_MISMATCH);
   const before = readTracker(sb);
-  const r = runSetStatus(['2', 'Applied', '--json'], sb);
-  let parsed = null;
-  try { parsed = JSON.parse(r.stdout); } catch {}
-  if (r.code === 3 && parsed?.code === 'report-number-mismatch'
-      && parsed.trackerNum === 2 && parsed.reportNums?.includes(7)
-      && readTracker(sb) === before) {
-    pass('report-mismatch: numeric selector fails closed without writing');
+  const byRowNum = runSetStatus(['2', 'Rejected'], sb);
+  if (byRowNum.code === 2 && readTracker(sb) === before) {
+    pass('report-link: the row # (2) is not a selector when the row links report 7');
   } else {
-    fail(`report-mismatch: code=${r.code} json=${JSON.stringify(parsed)}\n${r.stdout}${r.stderr}`);
+    fail(`report-link: "2" should be not-found, got code=${byRowNum.code}\n${byRowNum.stdout}${byRowNum.stderr}`);
   }
-
-  const forced = runSetStatus(['2', 'Applied', '--force'], sb);
-  if (forced.code === 0 && /\| 2 \|[^\n]*\| Applied \|/.test(readTracker(sb))) {
-    pass('report-mismatch: --force permits an intentional numeric update');
+  const byReport = runSetStatus(['7', 'Rejected'], sb);
+  if (byReport.code === 0 && /\| 2 \| 2026-06-02 \| DriftCo \| Platform Engineer \| 4.0\/5 \| Rejected \|/.test(readTracker(sb))) {
+    pass('report-link: report 7 selects the row that links it');
   } else {
-    fail(`report-mismatch force: code=${forced.code}\n${forced.stdout}${forced.stderr}`);
+    fail(`report-link: "7" should update DriftCo, got code=${byReport.code}\n${byReport.stdout}${byReport.stderr}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 1c. A single match must still be checked against --role (#2009) ─
-// resolveRow only consults --role to break ties between 2+ candidates, so a
-// company matching exactly one row was updated without ever comparing it to
-// the role the caller explicitly asked for. The intended requisition may not
-// be in the tracker at all (fuzzy-deduped away), and the lone survivor for
-// that company silently absorbed the status change.
+// ── 1c. Removed selectors and overrides are unknown flags ───────
+// --role / --row / --report / --force existed only to cope with name
+// selectors and two diverging number spaces; with one number space they are
+// gone, and passing one is a usage error that writes nothing.
 {
   const sb = makeSandbox(TRACKER_9);
   const before = readTracker(sb);
-  const r = runSetStatus(['globex', 'SKIP', '--role', 'Data Engineer', '--json'], sb);
-  let parsed = null;
-  try { parsed = JSON.parse(r.stdout); } catch {}
-  if (r.code === 3 && parsed?.code === 'role-mismatch'
-      && parsed.rowRole === 'Platform Engineer' && parsed.requestedRole === 'Data Engineer'
-      && readTracker(sb) === before) {
-    pass('role-mismatch: single company match fails closed without writing (#2009)');
-  } else {
-    fail(`role-mismatch: code=${r.code} json=${JSON.stringify(parsed)}\n${r.stdout}${r.stderr}`);
-  }
-
-  const forced = runSetStatus(['globex', 'SKIP', '--role', 'Data Engineer', '--force'], sb);
-  if (forced.code === 0 && /\| 2 \|[^\n]*\| SKIP \|/.test(readTracker(sb))) {
-    pass('role-mismatch: --force records an explicit decision to proceed');
-  } else {
-    fail(`role-mismatch force: code=${forced.code}\n${forced.stdout}${forced.stderr}`);
+  for (const args of [['2', 'Applied', '--role', 'Platform Engineer'], ['--row', '2', 'Applied'], ['--report', '2', 'Applied'], ['2', 'Applied', '--force']]) {
+    const r = runSetStatus(args, sb);
+    if (r.code === 1 && /Unknown flag/.test(r.stderr) && readTracker(sb) === before) {
+      pass(`removed flag: ${args.find(a => a.startsWith('--'))} is a usage error, nothing written`);
+    } else {
+      fail(`removed flag ${args.join(' ')}: code=${r.code}\n${r.stdout}${r.stderr}`);
+    }
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 1d. An exact --role must NOT be rejected by the new guard (#2009) ─
-// roleFuzzyMatch is a dedup predicate: it returns false when the overlap is
-// entirely baseline vocabulary (["platform","engineer"]) so same-titled
-// sibling reqs never auto-merge. Using it alone as the guard's equality test
-// would reject --role "Platform Engineer" against a row that is exactly that.
+// ── 2. A company name is refused, never matched ─────────────────
+// Even a company with exactly one row: a name is a search, and a writer must
+// never pick a row from a search. The error points at find.mjs.
 {
   const sb = makeSandbox(TRACKER_9);
-  const r = runSetStatus(['globex', 'Applied', '--role', 'Platform Engineer'], sb);
-  if (r.code === 0 && /\| 2 \|[^\n]*\| Applied \|/.test(readTracker(sb))) {
-    pass('role-mismatch: an exact all-baseline role title still proceeds (#2009)');
-  } else {
-    fail(`role-mismatch exact: code=${r.code}\n${r.stdout}${r.stderr}`);
-  }
-
-  // Case and punctuation must not matter for the equality path.
-  const r2 = runSetStatus(['globex', 'Evaluated', '--role', 'platform  engineer'], sb);
-  if (r2.code === 0 && /\| 2 \|[^\n]*\| Evaluated \|/.test(readTracker(sb))) {
-    pass('role-mismatch: role equality is case/punctuation insensitive (#2009)');
-  } else {
-    fail(`role-mismatch normalize: code=${r2.code}\n${r2.stdout}${r2.stderr}`);
-  }
-  rmSync(sb.dir, { recursive: true, force: true });
-}
-
-// ── 1e. Symbol-bearing titles must not collapse to the same role (#2009) ─
-// The equality normalizer strips generic punctuation, so it must preserve the
-// symbols that actually distinguish a title first — otherwise "C# Engineer" and
-// "C++ Engineer" both fold to "c engineer" and the guard silently updates the
-// wrong row for exactly the kind of title it exists to protect.
-{
-  const TRACKER_SYMBOL = `# Applications Tracker
-
-| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
-|---|------|---------|------|-------|--------|-----|--------|-------|
-| 1 | 2026-06-01 | Contoso | C++ Engineer | 4.0/5 | Evaluated | ✅ | [1](../reports/001-contoso-2026-06-01.md) | — |
-`;
-  const sb = makeSandbox(TRACKER_SYMBOL);
   const before = readTracker(sb);
-  const r = runSetStatus(['contoso', 'SKIP', '--role', 'C# Engineer', '--json'], sb);
+  for (const name of ['globex', 'acme', '?']) {
+    const r = runSetStatus([name, 'Responded'], sb);
+    if (r.code === 1 && /is not a report number/.test(r.stderr) && /find\.mjs/.test(r.stderr) && readTracker(sb) === before) {
+      pass(`by-company: "${name}" refused with a pointer to find.mjs, nothing written`);
+    } else {
+      fail(`by-company "${name}": code=${r.code} (want 1)\n${r.stdout}${r.stderr}`);
+    }
+  }
+  const j = runSetStatus(['globex', 'Responded', '--json'], sb);
   let parsed = null;
-  try { parsed = JSON.parse(r.stdout); } catch {}
-  if (r.code === 3 && parsed?.code === 'role-mismatch' && readTracker(sb) === before) {
-    pass('role-mismatch: "C# Engineer" does not match a "C++ Engineer" row (#2009)');
+  try { parsed = JSON.parse(j.stdout); } catch {}
+  if (j.code === 1 && parsed?.code === 'usage' && /find\.mjs/.test(parsed.error)) {
+    pass('by-company --json: structured usage error');
   } else {
-    fail(`role-mismatch symbol: code=${r.code} json=${JSON.stringify(parsed)}\n${r.stdout}${r.stderr}`);
-  }
-
-  // The genuine same-symbol title still matches (guard does not over-fire).
-  const r2 = runSetStatus(['contoso', 'Applied', '--role', 'c++ engineer'], sb);
-  if (r2.code === 0 && /\| 1 \|[^\n]*\| Applied \|/.test(readTracker(sb))) {
-    pass('role-mismatch: "c++ engineer" still matches a "C++ Engineer" row (#2009)');
-  } else {
-    fail(`role-mismatch symbol-equal: code=${r2.code}\n${r2.stdout}${r2.stderr}`);
-  }
-  rmSync(sb.dir, { recursive: true, force: true });
-}
-
-// ── 2. Update by company name (single match) ────────────────────
-{
-  const sb = makeSandbox(TRACKER_9);
-  const r = runSetStatus(['globex', 'Responded'], sb);
-  if (r.code === 0 && /\| Globex \| Platform Engineer \| 4.0\/5 \| Responded \|/.test(readTracker(sb))) {
-    pass('by-company: fuzzy company resolves single match');
-  } else {
-    fail(`by-company: code=${r.code}\n${r.stdout}${r.stderr}`);
+    fail(`by-company --json: code=${j.code}\n${j.stdout}${j.stderr}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }
@@ -270,7 +219,7 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 5. Not found: number and company ────────────────────────────
+// ── 5. Not found: unknown report number, or a row with no report ─
 {
   const sb = makeSandbox(TRACKER_9);
   const r1 = runSetStatus(['99', 'Applied'], sb);
@@ -279,72 +228,44 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
   } else {
     fail(`not-found num: code=${r1.code} (want 2)\n${r1.stdout}${r1.stderr}`);
   }
-  const r2 = runSetStatus(['hooli', 'Applied'], sb);
-  if (r2.code === 2) {
-    pass('not-found: unknown company exits 2');
-  } else {
-    fail(`not-found company: code=${r2.code} (want 2)\n${r2.stdout}${r2.stderr}`);
-  }
   rmSync(sb.dir, { recursive: true, force: true });
+
+  const sb2 = makeSandbox(TRACKER_NO_REPORT);
+  const before = readTracker(sb2);
+  const r2 = runSetStatus(['8', 'Rejected'], sb2);
+  if (r2.code === 2 && readTracker(sb2) === before) {
+    pass('not-found: a row with no report link cannot be selected by its #');
+  } else {
+    fail(`not-found report-less: code=${r2.code} (want 2)\n${r2.stdout}${r2.stderr}`);
+  }
+  rmSync(sb2.dir, { recursive: true, force: true });
 }
 
-// ── 6. Ambiguous company: candidates listed, --role disambiguates ─
+// ── 6. Two rows linking one report: refuse to guess ─────────────
 {
-  const sb = makeSandbox(TRACKER_9);
-  const r = runSetStatus(['acme', 'Applied'], sb);
-  if (r.code === 3 && r.stderr.includes('#1') && r.stderr.includes('#3') && r.stderr.includes('Backend Engineer') && r.stderr.includes('Data Engineer')) {
-    pass('ambiguous: exit 3 with numbered candidate list');
-  } else {
-    fail(`ambiguous: code=${r.code} (want 3)\n${r.stdout}${r.stderr}`);
-  }
-  const r2 = runSetStatus(['acme', 'Applied', '--role', 'Data Engineer'], sb);
-  if (r2.code === 0 && /\| 3 \| 2026-06-03 \| Acme \| Data Engineer \| 3.9\/5 \| Applied \|/.test(readTracker(sb))) {
-    pass('ambiguous: --role disambiguates to the right row');
-  } else {
-    fail(`ambiguous --role: code=${r2.code}\n${r2.stdout}${r2.stderr}`);
-  }
-  rmSync(sb.dir, { recursive: true, force: true });
-}
-
-// ── 6b. Duplicate tracker #: bare number refuses to guess (#1704) ─
-{
-  const sb = makeSandbox(TRACKER_DUP_NUM);
+  const sb = makeSandbox(TRACKER_DUP_REPORT);
   const before = readTracker(sb);
   const r = runSetStatus(['5', 'Rejected'], sb);
   if (r.code === 3 && readTracker(sb) === before
       && r.stderr.includes('University of Alberta') && r.stderr.includes('Esri Canada')) {
-    pass('dup-num: bare #5 matching 2 rows exits 3, tracker untouched, both companies listed');
+    pass('dup-report: report 5 linked by 2 rows exits 3, tracker untouched, both companies listed');
   } else {
-    fail(`dup-num: code=${r.code} (want 3)\n${r.stdout}${r.stderr}`);
-  }
-  // --role disambiguates exactly like the company-selector ambiguous path.
-  const r2 = runSetStatus(['5', 'Rejected', '--role', 'Manager Talent and Organizational Development'], sb);
-  if (r2.code === 0 && /\| 5 \| 2026-06-03 \| Esri Canada \|.*\| Rejected \|/.test(readTracker(sb))) {
-    pass('dup-num: --role disambiguates to the right row');
-  } else {
-    fail(`dup-num --role: code=${r2.code}\n${r2.stdout}${r2.stderr}`);
-  }
-  // The OTHER row (University of Alberta) must stay untouched by the --role
-  // disambiguated write above.
-  if (readTracker(sb).includes('| 5 | 2026-05-29 | University of Alberta | Curriculum Coordinator | 3.8/5 | Evaluated |')) {
-    pass('dup-num: unrelated row with the same # untouched after disambiguation');
-  } else {
-    fail(`dup-num: unrelated row was modified\n${readTracker(sb)}`);
+    fail(`dup-report: code=${r.code} (want 3)\n${r.stdout}${r.stderr}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 6c. Duplicate tracker # + --json: structured candidates ─────
+// ── 6b. Two rows linking one report + --json: structured candidates ─
 {
-  const sb = makeSandbox(TRACKER_DUP_NUM);
+  const sb = makeSandbox(TRACKER_DUP_REPORT);
   const r = runSetStatus(['5', 'Rejected', '--json'], sb);
   let parsed = null;
   try { parsed = JSON.parse(r.stdout || r.stderr); } catch {}
   if (r.code === 3 && parsed && parsed.code === 'ambiguous' && Array.isArray(parsed.candidates)
-      && parsed.candidates.length === 2) {
-    pass('dup-num json: structured ambiguous error with 2 candidates');
+      && parsed.candidates.length === 2 && parsed.candidates[0].num === 5) {
+    pass('dup-report json: structured ambiguous error with 2 candidates');
   } else {
-    fail(`dup-num json: code=${r.code}\n${r.stdout}${r.stderr}`);
+    fail(`dup-report json: code=${r.code}\n${r.stdout}${r.stderr}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }
@@ -481,21 +402,6 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 11. Ambiguous + --json: machine-readable candidates ─────────
-{
-  const sb = makeSandbox(TRACKER_9);
-  const r = runSetStatus(['acme', 'Applied', '--json'], sb);
-  let parsed = null;
-  try { parsed = JSON.parse(r.stdout || r.stderr); } catch {}
-  if (r.code === 3 && parsed && parsed.code === 'ambiguous' && Array.isArray(parsed.candidates)
-      && parsed.candidates.length === 2 && parsed.candidates[0].num === 1) {
-    pass('json ambiguous: error object with candidates array');
-  } else {
-    fail(`json ambiguous: code=${r.code}\n${r.stdout}${r.stderr}`);
-  }
-  rmSync(sb.dir, { recursive: true, force: true });
-}
-
 // ── 12. 10-column Location layout ───────────────────────────────
 {
   const sb = makeSandbox(TRACKER_10);
@@ -522,7 +428,7 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
   rmSync(sb.dir, { recursive: true, force: true });
 }
 
-// ── 13b. --note/--role must not eat a following flag as their value ─
+// ── 13b. --note/--on must not eat a following flag as their value ─
 {
   const sb = makeSandbox(TRACKER_9);
   const before = readTracker(sb);
@@ -536,9 +442,9 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
     fail(`flag-eating: code=${r.code} (want 1) written=${readTracker(sb) !== before}\n${r.stdout}${r.stderr}`);
   }
   // Missing value at the end of argv is the same usage error.
-  const r2 = runSetStatus(['2', 'Applied', '--role'], sb);
-  if (r2.code === 1 && /--role/.test(r2.stderr) && readTracker(sb) === before) {
-    pass('flag-eating: trailing --role without value exits 1');
+  const r2 = runSetStatus(['2', 'Applied', '--on'], sb);
+  if (r2.code === 1 && /--on/.test(r2.stderr) && readTracker(sb) === before) {
+    pass('flag-eating: trailing --on without value exits 1');
   } else {
     fail(`flag-eating trailing: code=${r2.code}\n${r2.stdout}${r2.stderr}`);
   }
@@ -786,235 +692,6 @@ const TRACKER_REPORT_MISMATCH = `# Applications Tracker
     fail(`ledger: append-failure contract broken (code=${r.code}, logged=${parsed?.statusLogged})\n${r.stderr}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
-}
-
-// ── explicit --row / --report selectors (tracker-row-vs-report-id) ──
-//
-// Tracker row IDs and report IDs are independent counters sharing one number
-// space, so they diverge permanently once any row exists without a report.
-// This fixture is that state in miniature: row #7 links report #5, and an
-// unrelated row #5 also exists — so "5" alone names two different companies.
-{
-  const TRACKER_DIVERGED = `# Applications Tracker
-
-| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
-|---|------|---------|------|-------|--------|-----|--------|-------|
-| 5 | 2026-06-05 | Globex | Platform Engineer | 4.0/5 | Evaluated | ✅ | [4](../reports/004-globex-2026-06-05.md) | — |
-| 6 | 2026-06-06 | Initech | Data Engineer | 3.9/5 | Evaluated | ❌ | — | backfilled, no report |
-| 7 | 2026-06-07 | Acme | AI Engineer | 4.4/5 | Evaluated | ✅ | [5](../reports/005-acme-2026-06-07.md) | — |
-`;
-
-  const sandboxed = fn => {
-    const sandbox = makeSandbox(TRACKER_DIVERGED);
-    try { fn(sandbox); } finally { rmSync(sandbox.dir, { recursive: true, force: true }); }
-  };
-
-  // Negative control: without an explicit selector the ambiguity is real and
-  // the guard must still fire. If this ever passes, the tests below prove
-  // nothing — they would just be exercising an unguarded path.
-  sandboxed(sandbox => {
-    const r = runSetStatus(['5', 'Applied'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (r.code === 3 || /report ID|mismatch/i.test(r.stderr)) {
-      pass('selectors: bare number on a diverged tracker is still guarded');
-    } else {
-      fail(`selectors: bare number should be guarded, got code=${r.code}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const r = runSetStatus(['--row', '5', 'Applied', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (r.code === 0 && parsed?.company === 'Globex') {
-      pass('selectors: --row 5 selects tracker row #5 (Globex)');
-    } else {
-      fail(`selectors: --row 5 → code=${r.code} company=${parsed?.company}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  // The discriminating case: the SAME number through the two selectors must
-  // land on two different applications.
-  sandboxed(sandbox => {
-    const r = runSetStatus(['--report', '5', 'Applied', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (r.code === 0 && parsed?.company === 'Acme') {
-      pass('selectors: --report 5 selects the row LINKING report #5 (Acme, row #7)');
-    } else {
-      fail(`selectors: --report 5 → code=${r.code} company=${parsed?.company}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const r = runSetStatus(['--row', '7', 'Applied'], sandbox);
-    if (r.code === 0 && /Acme/.test(r.stdout)) {
-      pass('selectors: --row bypasses the mismatch guard without --force');
-    } else {
-      fail(`selectors: --row 7 → code=${r.code}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['--row', '5', '--report', '5', 'Applied'], sandbox);
-    if (r.code === 1 && readTracker(sandbox) === before) {
-      pass('selectors: --row + --report is rejected, tracker untouched');
-    } else {
-      fail(`selectors: --row + --report → code=${r.code}, tracker changed=${readTracker(sandbox) !== before}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['--row', 'abc', 'Applied'], sandbox);
-    if (r.code === 1 && readTracker(sandbox) === before) {
-      pass('selectors: non-numeric --row is rejected before any write');
-    } else {
-      fail(`selectors: --row abc → code=${r.code}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['--row', '5', 'Globex', 'Applied'], sandbox);
-    if (r.code === 1 && readTracker(sandbox) === before) {
-      pass('selectors: --row plus a positional selector is rejected');
-    } else {
-      fail(`selectors: --row + positional → code=${r.code}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const r = runSetStatus(['--report', '999', 'Applied'], sandbox);
-    if (r.code === 2) {
-      pass('selectors: --report with no linked row exits not-found (2)');
-    } else {
-      fail(`selectors: --report 999 → code=${r.code}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  // A row with no report link must not be reachable via --report at all.
-  sandboxed(sandbox => {
-    const r = runSetStatus(['--report', '6', 'Applied', '--json'], sandbox);
-    if (r.code === 2) {
-      pass('selectors: --report never matches a report-less row by its tracker #');
-    } else {
-      fail(`selectors: --report 6 should not match row #6, got code=${r.code}\n${r.stdout}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['--row'], sandbox);
-    if (r.code === 1 && readTracker(sandbox) === before) {
-      pass('selectors: --row without a value exits 1 without writing');
-    } else {
-      fail(`selectors: bare --row → code=${r.code}`);
-    }
-  });
-
-  sandboxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['--row', '5', 'Applied', '--dry-run'], sandbox);
-    if (r.code === 0 && readTracker(sandbox) === before) {
-      pass('selectors: --row honours --dry-run (no write)');
-    } else {
-      fail(`selectors: --row + --dry-run → code=${r.code}, changed=${readTracker(sandbox) !== before}`);
-    }
-  });
-}
-
-// ── report-less row blind spot (#2346) ───────────────────────────
-//
-// merge-tracker's "Tracker #N already used; assigning #M" fallback leaves a
-// backfilled row at #N while the evaluated row lands at #M keeping its [N]
-// report link. A stale numeric selector then lands on the report-less row,
-// which the report-link guard cannot compare against anything.
-{
-  const TRACKER_2346 = `# Applications Tracker
-
-| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
-|---|------|---------|------|-------|--------|-----|--------|-------|
-| 1 | 2026-06-01 | Acme | Engineer | 4.0/5 | Evaluated | ✅ | [1](../reports/001-acme-2026-06-01.md) | — |
-| 4 | 2026-06-04 | Umbrella | Coordinator | N/A | Applied | ❌ | — | backfilled, occupies #4 |
-| 5 | 2026-06-05 | Hooli | ML Engineer | 4.3/5 | Evaluated | ❌ | [4](../reports/004-hooli-2026-06-05.md) | pushed off #4 by the collision |
-`;
-
-  const boxed = fn => {
-    const sandbox = makeSandbox(TRACKER_2346);
-    try { fn(sandbox); } finally { rmSync(sandbox.dir, { recursive: true, force: true }); }
-  };
-
-  // The bug: "4" names row #4 (Umbrella) AND report #4 (Hooli). Before the
-  // fix this silently rewrote Umbrella.
-  boxed(sandbox => {
-    const before = readTracker(sandbox);
-    const r = runSetStatus(['4', 'Rejected', '--note', 'rejected per email'], sandbox);
-    if (r.code === 3 && readTracker(sandbox) === before) {
-      pass('#2346: bare number matching a report-less row is refused, tracker untouched');
-    } else {
-      fail(`#2346: expected exit 3 + no write, got code=${r.code} changed=${readTracker(sandbox) !== before}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  boxed(sandbox => {
-    const r = runSetStatus(['4', 'Rejected', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (parsed?.code === 'report-number-ambiguous' && parsed?.linkedBy?.[0]?.company === 'Hooli') {
-      pass('#2346: structured error names the row that links the report');
-    } else {
-      fail(`#2346: json payload = ${JSON.stringify(parsed)}`);
-    }
-  });
-
-  // Both escapes must still reach their intended, DIFFERENT rows.
-  boxed(sandbox => {
-    const r = runSetStatus(['--report', '4', 'Rejected', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (r.code === 0 && parsed?.company === 'Hooli') {
-      pass('#2346: --report 4 reaches Hooli (the actually-rejected application)');
-    } else {
-      fail(`#2346: --report 4 → code=${r.code} company=${parsed?.company}`);
-    }
-  });
-
-  boxed(sandbox => {
-    const r = runSetStatus(['--row', '4', 'Rejected', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r.stdout); } catch {}
-    if (r.code === 0 && parsed?.company === 'Umbrella') {
-      pass('#2346: --row 4 still reaches Umbrella');
-    } else {
-      fail(`#2346: --row 4 → code=${r.code} company=${parsed?.company}`);
-    }
-  });
-
-  boxed(sandbox => {
-    const r = runSetStatus(['4', 'Rejected', '--force'], sandbox);
-    if (r.code === 0 && /Umbrella/.test(r.stdout)) {
-      pass('#2346: --force still overrides, unchanged escape hatch');
-    } else {
-      fail(`#2346: --force → code=${r.code}\n${r.stdout}${r.stderr}`);
-    }
-  });
-
-  // Negative control for the new check: a report-less row whose number NO other
-  // row links is unambiguous and must keep working. Without this, the fix could
-  // be over-broad (refusing every backfilled row) and the tests would not notice.
-  boxed(sandbox => {
-    const r2 = runSetStatus(['1', 'Rejected', '--json'], sandbox);
-    let parsed = null;
-    try { parsed = JSON.parse(r2.stdout); } catch {}
-    if (r2.code === 0 && parsed?.company === 'Acme') {
-      pass('#2346: unambiguous bare number is still accepted (not over-broad)');
-    } else {
-      fail(`#2346: bare "1" should still work, got code=${r2.code} company=${parsed?.company}`);
-    }
-  });
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -7,21 +7,21 @@ When the user asks to prep for an interview at a specific company+role, or when 
 This is not just a standing description — it is a real workflow step. When the user reports hearing back from a company / getting invited to interview ("heard back from {company}", "they want to interview me", "got a call for {role}"), do not stop at the tracker update:
 
 1. Match the company+role against `data/applications.md` (reuse `invite-match.mjs` if the message text is ambiguous) and confirm with the user which row it is, if more than one candidate matches.
-2. Propose the status change to `Interview` via `node set-status.mjs <report#|company> Interview [--note]` and wait for explicit confirmation before writing (see `modes/reply-watch.md` Step 2 for the same HITL pattern) — never write silently.
-3. Once the status update is confirmed, immediately offer to run this mode for that company+role: "Want me to generate the interview-prep kit for {company} now?" If yes, proceed with Step 1 below, feeding in the existing evaluation report's archetype/gaps (see Inputs #2).
+2. Propose the status change to `Interview` via `node set-status.mjs <report#> Interview [--note]` (the report number of the row confirmed in step 1) and wait for explicit confirmation before writing (see `modes/reply-watch.md` Step 2 for the same HITL pattern) — never write silently.
+3. Once the status update is confirmed, immediately offer to run this mode for that report number: "Want me to generate the interview-prep kit for {company} — {role} (report {NNN}) now?" If yes, proceed with Step 1 below for report `{NNN}`, feeding in its archetype/gaps (see Inputs #2).
 
 This closes the loop that evaluation-time Block F used to (poorly) approximate — the deep prep now happens once, exactly when it's needed, instead of a shallow version happening on every evaluation regardless of outcome.
 
 ## Inputs
 
-1. **Company name** and **role title** (required)
+1. **Report number** `{NNN}` (required when the role was evaluated) — company, role, and URL come from `reports/{NNN}-*.md`. If the user names a company instead, run `node find.mjs "<company>"`, show the matches, and wait for the number (AGENTS.md → Selecting an Application). Company name and role title are inputs only on the URL-entry path below, where no report exists.
 2. **Evaluation report** in `reports/` (if exists) — read for archetype, gaps, matched proof points
 3. **Story bank** at `interview-prep/story-bank.md` — read for existing prepared stories
 4. **CV** at `cv.md` + `article-digest.md` — read for proof points
 5. **Profile** at `config/profile.yml` + `modes/_profile.md` — read for candidate context
 6. **Recruiter-side risk map** from the evaluation/PDF/application flow if present — use `modes/heuristics/recruiter-side.md` for the risk categories the interview process must resolve
 7. **Coffee chat notes** for this company, if the user has any (optional — see "Coffee Chat Cross-Reference" below)
-8. **Prior stated compensation** — if the tracker# is known, run `node salary-gap.mjs --stated-for <tracker#>` (zero tokens). Any prior `stated` observation is a number already committed to a specific interviewer in an earlier round — surface it in the Process Overview (Step 2) or Recruiter/HR pack (Step 4) as a "already discussed" reminder so the candidate stays consistent.
+8. **Prior stated compensation** — run `node salary-gap.mjs --stated-for <report#>` (zero tokens). Any prior `stated` observation is a number already committed to a specific interviewer in an earlier round — surface it in the Process Overview (Step 2) or Recruiter/HR pack (Step 4) as a "already discussed" reminder so the candidate stays consistent.
 
 ## Coffee Chat Cross-Reference (optional, North America-specific)
 
@@ -32,7 +32,7 @@ Before generating prep for a company, check whether the user has a coffee chat n
 If a coffee chat note exists for this company, cross-reference it against:
 
 - **What's known/expected about the interview itself** — the JD, named interviewers (Step 1 research, Panel Intel table in Step 4), and the Step 2 Process Overview.
-- **Any existing interview transcript for the same company** — prior rounds already captured in `interview-prep/{company-slug}-{role-slug}.md`, and structured session records in `interview-prep/sessions/` (written by `modes/interview/debrief.md` Step 9).
+- **Any existing interview transcript for the same company** — prior rounds already captured in `interview-prep/{NNN}-{company-slug}-{role-slug}.md` (find it with `interview-prep/{NNN}-*.md`), and structured session records in `interview-prep/sessions/` (written by `modes/interview/debrief.md` Step 9).
 
 Surface explicitly whether the coffee chat **corroborates** or **contradicts** something known or suspected about the interview process:
 
@@ -53,7 +53,7 @@ The inputs above are report-first, but a common path skips evaluation entirely: 
 **Trigger — both conditions required:**
 
 1. The user **explicitly asks to prep** and provides a JD URL (e.g. "prep me for this", "interview prep: <URL>", `/career-ops interview-prep <URL>`). A pasted URL alone is NOT enough — per AGENTS.md, a bare URL routes to `auto-pipeline`, not here.
-2. **No matching report exists** in `reports/` for that company+role. If a report DOES exist, ignore the URL fetch and use the report — the report stays authoritative.
+2. **No report exists for this role.** Run `node find.mjs "<company>"`; if rows come back, show them and ask whether one of them is this role. If one is, use its report number instead — ignore the URL fetch, the report stays authoritative.
 
 **Fetch ladder** — same as `modes/oferta.md` and the AGENTS.md Offer Verification rule; JD fetching follows the same ladder:
 
@@ -314,7 +314,7 @@ Things to say, do, and avoid — segmented by who's listening. The same fact can
 
 ## Output
 
-Save the full report to `interview-prep/{company-slug}-{role-slug}.md` with this header:
+Save the full report to `interview-prep/{NNN}-{company-slug}-{role-slug}.md` with this header. `{NNN}` is the report number: one company can have several applications in interview at once, and every interview mode finds this file by `interview-prep/{NNN}-*.md`. For a role that was never evaluated (URL entry), drop the `{NNN}-` prefix; add it once the role gets a report.
 
 ```markdown
 # Interview Intel: {Company} — {Role}

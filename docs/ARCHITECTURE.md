@@ -89,7 +89,7 @@ templates/cv-template.html → PDF generation template
 ## File Naming Conventions
 
 - Reports: `{###}-{company-slug}-{YYYY-MM-DD}.md` (3-digit zero-padded)
-- PDFs: `cv-candidate-{company-slug}-{YYYY-MM-DD}.pdf`
+- PDFs: `cv-{company-slug}-{###}.pdf` (`{###}` is the report number; `-latex` / `-canva` suffixes for those paths). `npm run export-cv {###}` copies one to a clean application-ready name
 - Tracker TSVs: `batch/tracker-additions/{id}.tsv`
 
 ## Pipeline Integrity

@@ -2428,7 +2428,7 @@ if (
   offerPrepMode.includes('Step 8 — Reply draft (optional, on request)') &&
   offerPrepMode.includes('Never auto-generate') &&
   offerPrepMode.includes('no prep report, no reply draft') &&
-  offerPrepMode.includes('data/offers/{company-slug}/reply-draft-{YYYY-MM-DD}.md') &&
+  offerPrepMode.includes('data/offers/{NNN}-{company-slug}/reply-draft-{YYYY-MM-DD}.md') &&
   offerPrepMode.includes('trace back to a line in the prep report') &&
   offerPrepMode.includes('Never submit. Never send email. Never click send.') &&
   offerPrepMode.includes('never demands') &&
@@ -2718,16 +2718,71 @@ if (
 // reports 141, 144 and 145 (three different Perplexity roles, all Applied) all
 // claimed output/cv-candidate-perplexity-2026-09-02.pdf, of which one file
 // existed. The bug lives in prompt text, so only a text assertion catches its
-// removal.
+// removal. The name is cv-{company-slug}-{NNN} (plans/10-07-26_report-number-
+// as-id.md): no candidate segment, no date. The report header must name the
+// same PDF the worker writes; the two drifted once already (f0e76ac).
 if (
-  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}.html') &&
-  batchPromptDoc.includes('output/cv-candidate-{company-slug}-{{REPORT_NUM}}-{{DATE}}.pdf') &&
-  !/output\/cv-candidate-\{company-slug\}(?:-\{\{DATE\}\})?\.(?:html|pdf)/.test(batchPromptDoc) &&
+  batchPromptDoc.includes('output/cv-{company-slug}-{{REPORT_NUM}}.html') &&
+  batchPromptDoc.includes('output/cv-{company-slug}-{{REPORT_NUM}}.pdf \\') &&
+  batchPromptDoc.includes('**PDF:** {output/cv-{company-slug}-{{REPORT_NUM}}.pdf if score') &&
+  !/output\/cv-\{company-slug\}(?:-\{\{DATE\}\})?\.(?:html|pdf)/.test(batchPromptDoc) &&
+  !/output\/[^`\s]*\{candidate[^`\s]*\.(?:html|pdf)/.test(batchPromptDoc) &&
   batchPromptDoc.includes('Never drop `{{REPORT_NUM}}` from either filename')
 ) {
   pass('batch prompt keys tailored-CV filenames on the report number (no same-company overwrite)');
 } else {
   fail('batch prompt CV filenames must carry {{REPORT_NUM}} — company-slug-only names overwrite sibling roles');
+}
+
+// Report number as the application ID (plans/10-07-26_report-number-as-id.md).
+// The bug class lives in prompt and mode text — "find the report by slug",
+// "set-status <company>" — so only text assertions keep it from coming back.
+{
+  const selectorDocs = [
+    ...readdirSync(join(ROOT, 'modes')).filter(f => f.endsWith('.md')).map(f => `modes/${f}`),
+    ...readdirSync(join(ROOT, 'modes', 'interview')).filter(f => f.endsWith('.md')).map(f => `modes/interview/${f}`),
+    'batch/batch-prompt.md', 'AGENTS.md', 'docs/SCRIPTS.md', '.agents/skills/career-ops/SKILL.md',
+  ];
+  const NAME_SELECTOR = [
+    /\/career-ops (?:pdf|cover|email(?: stuck| noshow)?|offer-prep reply) \{(?:company-)?slug\}/,
+    /\{report-number-or-slug\}/,
+    /(?:set-status|outcome)\.mjs <report#\\?\|company>/,
+    /(?:set-status|outcome)\.mjs --(?:row|role|force)\b/,
+  ];
+  const offenders = [];
+  for (const doc of selectorDocs) {
+    const text = readFile(doc);
+    for (const re of NAME_SELECTOR) if (re.test(text)) offenders.push(`${doc}: ${re}`);
+  }
+  if (offenders.length === 0) {
+    pass('no mode, prompt, or doc selects an application by company name or slug');
+  } else {
+    fail(`name selectors are back — use the report number:\n  ${offenders.join('\n  ')}`);
+  }
+
+  const agentsDoc = readFile('AGENTS.md');
+  if (agentsDoc.includes('### Selecting an Application (Report Number)') && agentsDoc.includes('node find.mjs "<name>"')) {
+    pass('AGENTS.md carries the report-number selector rule');
+  } else {
+    fail('AGENTS.md lost the "Selecting an Application (Report Number)" rule');
+  }
+
+  // Files later looked up per application must carry the report number, or two
+  // applications at one company collide (the same bug class as CV filenames).
+  const keyed = [
+    ['modes/interview-prep.md', 'interview-prep/{NNN}-{company-slug}-{role-slug}.md'],
+    ['modes/interview/debrief.md', 'interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md'],
+    ['modes/interview/practice.md', 'interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md'],
+    ['modes/cover.md', '/tmp/cover-payload-{company-slug}-{NNN}.json'],
+    ['modes/cover.md', 'output/{company-slug}-{role-slug}-{NNN}-cover.pdf'],
+    ['modes/offer-prep.md', 'data/offers/{NNN}-{company-slug}/'],
+  ];
+  const missing = keyed.filter(([doc, path]) => !readFile(doc).includes(path)).map(([doc, path]) => `${doc}: ${path}`);
+  if (missing.length === 0) {
+    pass('per-application artifact paths carry the report number');
+  } else {
+    fail(`per-application paths lost their {NNN}:\n  ${missing.join('\n  ')}`);
+  }
 }
 
 // modes/pdf.md is not only the interactive path: batch-tailor.mjs spawns one
@@ -2736,9 +2791,10 @@ if (
 // the same collision applies here and the fix has to hold in both places.
 const pdfModeDoc = readFile('modes/pdf.md');
 if (
-  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}.html') &&
-  pdfModeDoc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
+  pdfModeDoc.includes('output/cv-{company-slug}-{NNN}.html') &&
+  pdfModeDoc.includes('output/cv-{company-slug}-{NNN}.pdf') &&
   pdfModeDoc.includes('Flat CV paths must carry `{NNN}`, the report number') &&
+  !/\{candidate\}/.test(pdfModeDoc) &&
   pdfModeDoc.includes('batch-tailor.mjs')
 ) {
   pass('pdf mode keys flat CV paths on the report number and flags the batch-tailor fan-out');
@@ -2746,13 +2802,16 @@ if (
   fail('modes/pdf.md flat CV paths must carry {NNN} — batch-tailor.mjs workers otherwise overwrite each other');
 }
 
-// Same collision, LaTeX path.
+// Same collision, LaTeX path. The -latex suffix keeps a LaTeX PDF from
+// overwriting the same report's HTML-rendered cv-{company-slug}-{NNN}.pdf, and
+// --report records it so export-cv.mjs finds it.
 for (const latexMode of ['modes/latex.md', 'modes/latex-tex.md']) {
   const doc = readFile(latexMode);
   if (
-    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.tex') &&
-    doc.includes('output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf') &&
-    !/output\/cv-\{candidate\}-\{company\}-\{YYYY-MM-DD\}\.(?:tex|pdf)/.test(doc)
+    doc.includes('output/cv-{company-slug}-{NNN}-latex.tex') &&
+    doc.includes('output/cv-{company-slug}-{NNN}-latex.pdf') &&
+    doc.includes('--report={NNN}') &&
+    !/\{candidate\}/.test(doc)
   ) {
     pass(`${latexMode} keys CV output paths on the report number`);
   } else {
@@ -7243,6 +7302,60 @@ try {
 // A tracker # must be a unique row id. Two rows sharing a # is never
 // legitimate (unlike Check 2's company+role dedup, which can false-positive
 // on a genuine re-application) — verify-pipeline must flag it as an error.
+// ── VERIFY-PIPELINE ONE NUMBER SPACE (Check 14) ─────────────────
+// A bare number means the report number everywhere (set-status, outcome,
+// export-cv...), which holds only while each row links exactly one report
+// whose number equals the row's # (plans/10-07-26_report-number-as-id.md).
+console.log('\n🧪 Testing verify-pipeline one-number-space check (Check 14)...');
+try {
+  const nsTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-numspace-'));
+  try {
+    mkdirSync(join(nsTmp, 'reports'));
+    for (const f of ['001-acme-2026-01-01.md', '002-globex-2026-01-02.md', '004-initech-2026-01-04.md', '005-hooli-2026-01-05.md']) {
+      writeFileSync(join(nsTmp, 'reports', f), '# r\n');
+    }
+    const header = '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n';
+    const runVerify = (rows) => {
+      const tracker = join(nsTmp, 'applications.md');
+      writeFileSync(tracker, header + rows.join('\n') + '\n');
+      try {
+        return { code: 0, out: execFileSync(NODE, ['verify-pipeline.mjs'], { cwd: ROOT, env: { ...process.env, CAREER_OPS_TRACKER: tracker }, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }) };
+      } catch (e) {
+        return { code: e.status, out: (e.stdout || '').toString() };
+      }
+    };
+
+    const good = runVerify([
+      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | [1](reports/001-acme-2026-01-01.md) | — |',
+    ]);
+    if (good.out.includes('Every row # equals its report number')) {
+      pass('Check 14 passes a row whose # equals its report number');
+    } else {
+      fail(`Check 14 did not pass a matching row\n${good.out}`);
+    }
+
+    const bad = runVerify([
+      '| 3 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | [2](reports/002-globex-2026-01-02.md) | — |',
+      '| 6 | 2026-01-03 | Umbrella | Backfill | N/A | Applied | ❌ | — | — |',
+      '| 4 | 2026-01-04 | Initech | SE | 3.5/5 | Evaluated | ❌ | [4](reports/004-initech-2026-01-04.md), [5](reports/005-hooli-2026-01-05.md) | — |',
+    ]);
+    if (bad.code === 1
+        && bad.out.includes('#3 (Globex — Analyst): links report 2')
+        && bad.out.includes('#6 (Umbrella — Backfill): no report link')
+        && bad.out.includes('#4 (Initech — SE): links 2 reports')) {
+      pass('Check 14 errors on a wrong #, a missing report, and two reports, naming each row');
+    } else {
+      fail(`Check 14 did not flag each broken row (exit ${bad.code})\n${bad.out}`);
+    }
+  } finally {
+    rmSync(nsTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`verify-pipeline one-number-space test crashed: ${e.message}`);
+}
+
 console.log('\n🧪 Testing verify-pipeline duplicate tracker # check (#1704)...');
 try {
   const dupNumTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-dupnum-'));
@@ -7289,12 +7402,16 @@ try {
   const cleanTmp = mkdtempSync(join(tmpdir(), 'career-ops-verify-dupnum-clean-'));
   try {
     const cleanTracker = join(cleanTmp, 'applications.md');
+    // Each row links its own report (Check 14: a row's # is its report number).
+    mkdirSync(join(cleanTmp, 'reports'));
+    writeFileSync(join(cleanTmp, 'reports', '001-acme-2026-01-01.md'), '# Acme\n');
+    writeFileSync(join(cleanTmp, 'reports', '002-globex-2026-01-02.md'), '# Globex\n');
     writeFileSync(cleanTracker,
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | — | — |\n' +
-      '| 2 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | — | — |\n');
+      '| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Evaluated | ❌ | [1](reports/001-acme-2026-01-01.md) | — |\n' +
+      '| 2 | 2026-01-02 | Globex | Analyst | 3.9/5 | Evaluated | ❌ | [2](reports/002-globex-2026-01-02.md) | — |\n');
     const cleanOut = run(NODE, ['verify-pipeline.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: cleanTracker }, stdio: ['pipe', 'pipe', 'pipe'] });
     if (cleanOut !== null && cleanOut.includes('No duplicate tracker numbers')) {
       pass('clean tracker with unique numbers passes the duplicate-number check');
@@ -7965,6 +8082,55 @@ try {
   fail(`find.mjs unit test crashed: ${e.message}`);
 }
 
+// resolveReportNumber is the one selector every tracker writer accepts
+// (plans/10-07-26_report-number-as-id.md): a report number resolves through the
+// Report cell; a name is refused, never matched.
+console.log('\n🧪 Testing find.mjs resolveReportNumber...');
+try {
+  const { resolveReportNumber } = await import(pathToFileURL(join(ROOT, 'find.mjs')).href);
+  const { resolveColumns, parseTrackerRow } = await import(pathToFileURL(join(ROOT, 'tracker-parse.mjs')).href);
+  const lines = [
+    '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |',
+    '|---|------|---------|------|-------|--------|-----|--------|-------|',
+    '| 141 | 2026-09-02 | Perplexity | MTS (Backend) | 4.2/5 | Applied | ✅ | [141](../reports/141-perplexity-2026-09-02.md) | — |',
+    '| 144 | 2026-09-02 | Perplexity | MTS (Enterprise) | 4.3/5 | Applied | ✅ | [144](../reports/144-perplexity-2026-09-02.md) | — |',
+    '| 226 | 2026-09-20 | ? | Software Engineer | 3.9/5 | Rejected | ❌ | [226](../reports/226-unknown-2026-09-20.md) | — |',
+    '| 300 | 2026-10-01 | DupeCo | A | 4.0/5 | Evaluated | ❌ | [300](../reports/300-dupe-2026-10-01.md) | — |',
+    '| 301 | 2026-10-01 | DupeCo | B | 4.0/5 | Evaluated | ❌ | [300](../reports/300-dupe-2026-10-01.md) | — |',
+  ];
+  const colmap = resolveColumns(lines);
+  const rows = lines.map(l => parseTrackerRow(l, colmap)).filter(Boolean);
+
+  const exact = resolveReportNumber(rows, '0144');
+  if (exact.row?.num === 144 && exact.row.role === 'MTS (Enterprise)') {
+    pass('resolveReportNumber resolves a zero-padded report number to its one row');
+  } else {
+    fail(`resolveReportNumber("0144") wrong: ${JSON.stringify(exact)}`);
+  }
+  // A company name must never resolve — not even for a company with one row,
+  // and not to the unknown-employer (?) row, which a substring match hits for any name.
+  const byName = ['Perplexity', 'Zzyzxco', '?'].map(n => resolveReportNumber(rows, n));
+  if (byName.every(r => r.error === 'usage' && !r.row) && /node find\.mjs "Perplexity"/.test(byName[0].message)) {
+    pass('resolveReportNumber refuses names (incl. one that a substring match would land on ?) and points to find.mjs');
+  } else {
+    fail(`resolveReportNumber accepted a name: ${JSON.stringify(byName)}`);
+  }
+  const missing = resolveReportNumber(rows, '999');
+  if (missing.error === 'not-found' && !missing.row) {
+    pass('resolveReportNumber reports an unknown report number as not-found');
+  } else {
+    fail(`resolveReportNumber("999") wrong: ${JSON.stringify(missing)}`);
+  }
+  const dupe = resolveReportNumber(rows, '300');
+  if (dupe.error === 'ambiguous' && dupe.candidates?.length === 2 && !dupe.row) {
+    pass('resolveReportNumber refuses to pick when two rows link one report');
+  } else {
+    fail(`resolveReportNumber("300") wrong: ${JSON.stringify(dupe)}`);
+  }
+} catch (e) {
+  fail(`find.mjs resolveReportNumber test crashed: ${e.message}`);
+}
+
 // dedup-tracker reads AND writes by column; with a Location column its status
 // promotion must target the Status cell, not fixed parts[6].
 console.log('\n🧪 Testing dedup-tracker with an inserted Location column...');
@@ -8546,11 +8712,11 @@ try {
     '# report\tpdf\thtml\tformat\tdate\n' +
       '041\toutput/cv-umbrella.pdf\toutput/cv-umbrella.html\tletter\t2026-01-07\n',
     [{
-      name: '001-umbrella.tsv',
-      content: '1\t2026-01-07\tUmbrella\tEngineer\t4.1/5\tEvaluated\t❌\t[41](../reports/041-umbrella-2026-01-07.md)\tok\n',
+      name: '041-umbrella.tsv',
+      content: '41\t2026-01-07\tUmbrella\tEngineer\t4.1/5\tEvaluated\t❌\t[41](../reports/041-umbrella-2026-01-07.md)\tok\n',
     }],
   );
-  if (newAddition.result !== null && newAddition.merged.includes('| 1 | 2026-01-07 | Umbrella | Engineer | 4.1/5 | Evaluated | ✅ | [41](../reports/041-umbrella-2026-01-07.md) | ok |')) {
+  if (newAddition.result !== null && newAddition.merged.includes('| 41 | 2026-01-07 | Umbrella | Engineer | 4.1/5 | Evaluated | ✅ | [41](../reports/041-umbrella-2026-01-07.md) | ok |')) {
     pass('merge-tracker applies pdf-index.tsv to a newly merged tracker row in the same run');
   } else {
     fail('merge-tracker left a newly merged row at ❌ despite a matching pdf-index.tsv entry');
@@ -8562,7 +8728,10 @@ try {
 // ── MERGE-TRACKER REPORT-NUMBER COLLISION (#912) ─────────────────
 // The report-number dedup check was not company-guarded: a TSV for NewCo
 // with report [1] would find the existing tracker row [1] for OtherCo and
-// update it in-place instead of appending NewCo as a new row.
+// update it in-place instead of appending NewCo as a new row. OtherCo must
+// stay untouched. NewCo is now refused rather than appended as #2: a row's #
+// is its report number (plans/10-07-26_report-number-as-id.md), so a second
+// row claiming report 1 would make "application 1" mean two applications.
 console.log('\n🧪 Testing merge-tracker report-number cross-company collision (#912)...');
 try {
   const col912Tmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-912-'));
@@ -8573,11 +8742,12 @@ try {
     mkdirSync(col912Additions);
 
     const col912Tracker = join(col912Tmp, 'data', 'applications.md');
-    writeFileSync(col912Tracker,
+    const col912Original =
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |\n');
+      '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |\n';
+    writeFileSync(col912Tracker, col912Original);
     writeFileSync(join(col912Tmp, 'reports', '001-otherco-2026-01-01.md'), '# fixture\n');
     writeFileSync(join(col912Tmp, 'reports', '001-newco-2026-01-05.md'), '# fixture\n');
 
@@ -8585,34 +8755,28 @@ try {
     writeFileSync(join(col912Additions, '001-newco.tsv'),
       '1\t2026-01-05\tNewCo\tNew Role\tEvaluated\t2.7/5\t❌\t[1](reports/001-newco-2026-01-05.md)\tcollision\n');
 
-    const col912Result = run(NODE, ['merge-tracker.mjs'], {
+    const col912Result = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
       env: { ...process.env, CAREER_OPS_TRACKER: col912Tracker, CAREER_OPS_ADDITIONS: col912Additions },
     });
-    if (col912Result === null) {
-      fail('merge-tracker crashed during report-number collision test (#912)');
+    const col912Output = `${col912Result.stdout || ''}\n${col912Result.stderr || ''}`;
+    const col912Merged = readFileSync(col912Tracker, 'utf-8');
+
+    if (col912Merged === col912Original) {
+      pass('report-number collision (#912): existing OtherCo row left untouched, NewCo not appended');
     } else {
-      const col912Merged = readFileSync(col912Tracker, 'utf-8');
-      const col912Rows = col912Merged.split('\n').filter(l => l.startsWith('| ') && !l.startsWith('| #') && !l.startsWith('|---'));
-      const expectedOtherCoRow = '| 1 | 2026-01-01 | OtherCo | Staff Engineer | 4.0/5 | Evaluated | ❌ | [1](../reports/001-otherco-2026-01-01.md) | original |';
-
-      if (col912Rows.length === 2) {
-        pass('report-number collision (#912): merged tracker has exactly 2 rows');
-      } else {
-        fail(`report-number collision (#912): expected 2 rows, got ${col912Rows.length}`);
-      }
-
-      if (col912Rows.some(r => r.trim() === expectedOtherCoRow.trim())) {
-        pass('report-number collision (#912): existing OtherCo row left untouched (exact match)');
-      } else {
-        fail('report-number collision (#912): OtherCo row was overwritten by NewCo addition');
-      }
-
-      const expectedNewCoRow = '| 2 | 2026-01-05 | NewCo | New Role | 2.7/5 | Evaluated | ❌ | [1](../reports/001-newco-2026-01-05.md) | collision |';
-      if (col912Rows.some(r => r.trim() === expectedNewCoRow.trim())) {
-        pass('report-number collision (#912): NewCo appended as a new entry with correct data');
-      } else {
-        fail('report-number collision (#912): NewCo entry was swallowed or has incorrect data');
-      }
+      fail(`report-number collision (#912): tracker changed\n${col912Merged}`);
+    }
+    if (col912Result.status === 1 && /Refusing 001-newco\.tsv[^\n]*#1 is already used/.test(col912Output)) {
+      pass('report-number collision (#912): NewCo refused loudly with exit 1');
+    } else {
+      fail(`report-number collision (#912): expected a refusal and exit 1, got ${col912Result.status}\n${col912Output}`);
+    }
+    if (existsSync(join(col912Additions, '001-newco.tsv'))) {
+      pass('report-number collision (#912): refused TSV stays pending in tracker-additions/');
+    } else {
+      fail('report-number collision (#912): refused TSV was archived to merged/ and lost from the pending queue');
     }
   } finally {
     rmSync(col912Tmp, { recursive: true, force: true });
@@ -8622,16 +8786,15 @@ try {
 }
 
 // ── MERGE-TRACKER STALE-NUMBER COLLISION WITH AN EXISTING ROW (#1704) ────
-// Different from the #912 test above: that one is a same-run collision where
-// the incoming TSV's num equals an EXISTING row's num (addition.num <= maxNum,
-// already handled by the old ++maxNum fallback). This one exercises the actual
-// #1704 gap: an existing row's number is invisible to the plain maxNum scan
-// (merge-tracker's own header/separator-skip heuristic excludes any row whose
-// company/role text happens to contain "Empresa" or "---" — a real Spanish-
-// market company name is a realistic trigger), so the naive
-// `addition.num > maxNum` check trusted a colliding number as free. The fix
-// builds a Set of every number actually on the tracker (independent of that
-// heuristic) and refuses to trust a number already in it.
+// Different from the #912 test above: an existing row's number is invisible
+// to the plain maxNum scan (merge-tracker's own header/separator-skip
+// heuristic excludes any row whose company/role text happens to contain
+// "Empresa" or "---" — a real Spanish-market company name is a realistic
+// trigger), so the naive `addition.num > maxNum` check trusted a colliding
+// number as free. The fix builds a Set of every number actually on the tracker
+// (independent of that heuristic) and refuses to trust a number already in it.
+// A colliding row is refused outright, not bumped to a free number: its # must
+// equal its report number (plans/10-07-26_report-number-as-id.md).
 console.log('\n🧪 Testing merge-tracker stale-number collision with a hidden existing row (#1704)...');
 try {
   const staleNumTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-1704-'));
@@ -8645,51 +8808,36 @@ try {
     // loop skips this line entirely (the same heuristic it uses to skip the
     // Spanish-locale header row), so its number is NOT counted toward the old
     // plain maxNum scan.
-    writeFileSync(staleNumTracker,
+    const staleNumOriginal =
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 9 | 2026-01-02 | Empresa Digital SA | Analyst | 3.5/5 | Evaluated | ❌ | — | original |\n');
+      '| 9 | 2026-01-02 | Empresa Digital SA | Analyst | 3.5/5 | Evaluated | ❌ | [9](../reports/009-empresa-2026-01-02.md) | original |\n';
+    writeFileSync(staleNumTracker, staleNumOriginal);
 
     // Stale TSV for an unrelated company also embeds num=9 — numerically
     // "ahead" of the naive maxNum(0) computed from the hidden row, but already
     // used.
-    writeFileSync(join(staleNumAdditions, '001-newco.tsv'),
-      '9\t2026-01-10\tNewCo\tFresh Role\tEvaluated\t2.9/5\t❌\t—\tstale number\n');
+    writeFileSync(join(staleNumAdditions, '009-newco.tsv'),
+      '9\t2026-01-10\tNewCo\tFresh Role\tEvaluated\t2.9/5\t❌\t[9](reports/009-newco-2026-01-10.md)\tstale number\n');
 
-    const staleNumResult = run(NODE, ['merge-tracker.mjs'], {
+    const staleNumResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
       env: { ...process.env, CAREER_OPS_TRACKER: staleNumTracker, CAREER_OPS_ADDITIONS: staleNumAdditions },
     });
-    if (staleNumResult === null) {
-      fail('merge-tracker crashed during stale-number collision test (#1704)');
+    const staleNumOutput = `${staleNumResult.stdout || ''}\n${staleNumResult.stderr || ''}`;
+    const staleNumMerged = readFileSync(staleNumTracker, 'utf-8');
+
+    if (staleNumMerged === staleNumOriginal) {
+      pass('stale-number collision (#1704): hidden existing row #9 (Empresa Digital SA) untouched, NewCo not added');
     } else {
-      const staleNumMerged = readFileSync(staleNumTracker, 'utf-8');
-      const staleNumRows = staleNumMerged.split('\n').filter(l => l.startsWith('| ') && !l.startsWith('| #') && !l.startsWith('|---'));
-
-      if (staleNumRows.length === 2) {
-        pass('stale-number collision (#1704): merged tracker has exactly 2 rows');
-      } else {
-        fail(`stale-number collision (#1704): expected 2 rows, got ${staleNumRows.length}`);
-      }
-
-      const numsUsed = staleNumRows.map(r => parseInt(r.split('|')[1].trim(), 10));
-      if (new Set(numsUsed).size === numsUsed.length) {
-        pass('stale-number collision (#1704): no two rows share a tracker number');
-      } else {
-        fail(`stale-number collision (#1704): duplicate tracker number produced — ${numsUsed.join(', ')}`);
-      }
-
-      if (staleNumRows.some(r => r.includes('Empresa Digital SA') && /^\| 9 \|/.test(r))) {
-        pass('stale-number collision (#1704): hidden existing row #9 (Empresa Digital SA) untouched');
-      } else {
-        fail(`stale-number collision (#1704): existing #9 row was overwritten\n${staleNumMerged}`);
-      }
-
-      if (staleNumRows.some(r => r.includes('NewCo') && !/^\| 9 \|/.test(r))) {
-        pass('stale-number collision (#1704): NewCo bumped to a truly free number instead of reusing #9');
-      } else {
-        fail(`stale-number collision (#1704): NewCo was not bumped off the colliding number\n${staleNumMerged}`);
-      }
+      fail(`stale-number collision (#1704): tracker changed\n${staleNumMerged}`);
+    }
+    if (staleNumResult.status === 1 && /Refusing 009-newco\.tsv[^\n]*#9 is already used/.test(staleNumOutput)) {
+      pass('stale-number collision (#1704): the hidden row\'s number counts as used and NewCo is refused');
+    } else {
+      fail(`stale-number collision (#1704): expected a refusal naming #9 and exit 1, got ${staleNumResult.status}\n${staleNumOutput}`);
     }
   } finally {
     rmSync(staleNumTmp, { recursive: true, force: true });
@@ -8701,8 +8849,9 @@ try {
 // ── MERGE-TRACKER RESERVED-NUMBER FIDELITY (#1733) ──────────────
 // Parallel workers may reserve numbers in order but finish out of order. A
 // free reserved number remains valid even when a later number has already
-// reached the tracker; merge-tracker must preserve it, and only renumber on a
-// real collision (with a visible warning).
+// reached the tracker; merge-tracker must preserve it. A real collision is
+// refused loudly and left pending, never renumbered: the row's # must stay its
+// report number (plans/10-07-26_report-number-as-id.md).
 console.log('\n🧪 Testing merge-tracker reserved-number fidelity (#1733)...');
 try {
   const reservedTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-reserved-'));
@@ -8715,7 +8864,7 @@ try {
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 10 | 2026-01-10 | LaterCo | Engineer | 4.0/5 | Evaluated | ❌ | — | finished first |\n');
+      '| 10 | 2026-01-10 | LaterCo | Engineer | 4.0/5 | Evaluated | ❌ | [10](../reports/010-later-2026-01-10.md) | finished first |\n');
 
     writeFileSync(join(reservedAdditions, '005-early.tsv'),
       '5\t2026-01-05\tEarlyCo\tEngineer\tEvaluated\t4.1/5\t❌\t[5](reports/005-early-2026-01-05.md)\treserved first\n');
@@ -8730,7 +8879,7 @@ try {
     }
 
     writeFileSync(join(reservedAdditions, '005-collision.tsv'),
-      '5\t2026-01-11\tCollisionCo\tAnalyst\tEvaluated\t3.8/5\t❌\t—\tstale reservation\n');
+      '5\t2026-01-11\tCollisionCo\tAnalyst\tEvaluated\t3.8/5\t❌\t[5](reports/005-collision-2026-01-11.md)\tstale reservation\n');
     const collisionResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
       cwd: ROOT,
       encoding: 'utf-8',
@@ -8738,18 +8887,129 @@ try {
     });
     const afterCollision = readFileSync(reservedTracker, 'utf-8');
     const collisionOutput = `${collisionResult.stdout || ''}\n${collisionResult.stderr || ''}`;
-    if (collisionResult.status === 0
-        && /^\| 11 \|[^\n]*\| CollisionCo \|/m.test(afterCollision)
-        && /#5[^\n]*(?:already|collision)[^\n]*#11/i.test(collisionOutput)) {
-      pass('merge-tracker renumbers only a real collision and warns with both IDs');
+    if (collisionResult.status === 1
+        && !afterCollision.includes('CollisionCo')
+        && /Refusing 005-collision\.tsv[^\n]*#5 is already used/.test(collisionOutput)
+        && existsSync(join(reservedAdditions, '005-collision.tsv'))) {
+      pass('merge-tracker refuses a real collision loudly, adds nothing, and leaves the TSV pending');
     } else {
-      fail(`merge-tracker collision fallback was not loud and deterministic\n${collisionOutput}\n${afterCollision}`);
+      fail(`merge-tracker collision was not refused loudly and kept pending\n${collisionOutput}\n${afterCollision}`);
     }
   } finally {
     rmSync(reservedTmp, { recursive: true, force: true });
   }
 } catch (e) {
   fail(`merge-tracker reserved-number fidelity test crashed: ${e.message}`);
+}
+
+// ── MERGE-TRACKER ONE NUMBER SPACE: MISMATCH AND NO REPORT ──────
+// A new row's # must equal the one report it links
+// (plans/10-07-26_report-number-as-id.md). A TSV whose num differs from its
+// report number, or that links no report (a backfill with no evaluation), is
+// refused and left pending; a valid TSV in the same run still merges.
+console.log('\n🧪 Testing merge-tracker refusal of rows that break the report-number rule...');
+try {
+  const nsTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-numspace-'));
+  try {
+    mkdirSync(join(nsTmp, 'data'));
+    const nsAdditions = join(nsTmp, 'additions');
+    mkdirSync(nsAdditions);
+    const nsTracker = join(nsTmp, 'data', 'applications.md');
+    writeFileSync(nsTracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n');
+    writeFileSync(join(nsAdditions, '011-good.tsv'),
+      '11\t2026-02-01\tGoodCo\tEngineer\tEvaluated\t4.0/5\t❌\t[11](reports/011-goodco-2026-02-01.md)\tok\n');
+    writeFileSync(join(nsAdditions, '012-mismatch.tsv'),
+      '12\t2026-02-01\tBetaCo\tAnalyst\tEvaluated\t3.9/5\t❌\t[13](reports/013-betaco-2026-02-01.md)\tmismatch\n');
+    writeFileSync(join(nsAdditions, '014-backfill.tsv'),
+      '14\t2026-02-01\tGammaCo\tManager\tApplied\tN/A\t❌\t—\tbackfill without evaluation\n');
+    const nsResult = spawnSync(NODE, [join(ROOT, 'merge-tracker.mjs')], {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      env: { ...process.env, CAREER_OPS_TRACKER: nsTracker, CAREER_OPS_ADDITIONS: nsAdditions },
+    });
+    const nsOutput = `${nsResult.stdout || ''}\n${nsResult.stderr || ''}`;
+    const nsMerged = readFileSync(nsTracker, 'utf-8');
+    if (/^\| 11 \|[^\n]*\| GoodCo \|/m.test(nsMerged) && !nsMerged.includes('BetaCo') && !nsMerged.includes('GammaCo')) {
+      pass('merge-tracker merges the valid row and adds neither refused row');
+    } else {
+      fail(`merge-tracker merged the wrong rows\n${nsMerged}`);
+    }
+    if (nsResult.status === 1
+        && /Refusing 012-mismatch\.tsv[^\n]*num 12 does not match its report number 13/.test(nsOutput)
+        && /Refusing 014-backfill\.tsv[^\n]*must link exactly one report \(found 0\)/.test(nsOutput)) {
+      pass('merge-tracker refuses a num/report mismatch and a report-less row, each with its reason, exit 1');
+    } else {
+      fail(`merge-tracker did not refuse both rows with reasons (exit ${nsResult.status})\n${nsOutput}`);
+    }
+    if (existsSync(join(nsAdditions, '012-mismatch.tsv')) && existsSync(join(nsAdditions, '014-backfill.tsv'))
+        && !existsSync(join(nsAdditions, '011-good.tsv'))) {
+      pass('refused TSVs stay pending; the merged one moves to merged/');
+    } else {
+      fail('merge-tracker archived a refused TSV or left the merged one pending');
+    }
+  } finally {
+    rmSync(nsTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`merge-tracker report-number refusal test crashed: ${e.message}`);
+}
+
+// ── MERGE-TRACKER RE-EVALUATION UNDER A NEW REPORT NUMBER ────────
+// Re-evaluating an existing company+role (same exact title, higher score)
+// under a NEW report number updates the existing row in place. The row must
+// keep its own # AND its own report link — the # is that report's number
+// (verify-pipeline Check 14) and status-log / follow-up entries are keyed on
+// it — with the new report linked from the note. Writing the new link onto
+// the old # made `set-status <old#>` not-found and `set-status <new#>` write
+// to the old row (PR #7 review [1]).
+console.log('\n🧪 Testing merge-tracker re-evaluation under a new report number...');
+try {
+  const reTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-reeval-'));
+  try {
+    mkdirSync(join(reTmp, 'data'));
+    mkdirSync(join(reTmp, 'reports'));
+    const reAdditions = join(reTmp, 'additions');
+    mkdirSync(reAdditions);
+    for (const r of ['010-acme-2026-09-01.md', '050-acme-2026-10-01.md']) writeFileSync(join(reTmp, 'reports', r), '# fixture\n');
+    const reTracker = join(reTmp, 'data', 'applications.md');
+    writeFileSync(reTracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
+      '| 10 | 2026-09-01 | Acme | Platform Engineer | 3.0/5 | Applied | ❌ | [10](../reports/010-acme-2026-09-01.md) | first eval |\n');
+    writeFileSync(join(reAdditions, '050-acme.tsv'),
+      '50\t2026-10-01\tAcme\tPlatform Engineer\tEvaluated\t4.0/5\t❌\t[50](reports/050-acme-2026-10-01.md)\tre-evaluated\n');
+    const reEnv = { ...process.env, CAREER_OPS_TRACKER: reTracker, CAREER_OPS_ADDITIONS: reAdditions };
+    const reOut = run(NODE, ['merge-tracker.mjs'], { env: reEnv });
+    const reRows = readFileSync(reTracker, 'utf-8').split('\n').filter(l => /^\|\s*\d+\s*\|/.test(l));
+    const reRow = reRows[0] || '';
+    if (reOut !== null && reRows.length === 1
+        && reRow.includes('| 4.0/5 | Applied |')
+        && reRow.includes('| [10](../reports/010-acme-2026-09-01.md) |')
+        && reRow.includes('Re-eval 2026-10-01 (3→4): [50](../reports/050-acme-2026-10-01.md).')) {
+      pass('re-evaluation updates row #10 in place, keeps its own report link, and links report 50 from the note');
+    } else {
+      fail(`re-evaluation under a new report number wrote the wrong row:\n${reRows.join('\n')}`);
+    }
+    let verifyOut = '';
+    try {
+      verifyOut = execFileSync(NODE, ['verify-pipeline.mjs'], { cwd: ROOT, env: reEnv, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (e) {
+      verifyOut = (e.stdout || '').toString();
+    }
+    if (verifyOut.includes('Every row # equals its report number')) {
+      pass('re-evaluation leaves the tracker passing Check 14');
+    } else {
+      fail(`re-evaluation broke Check 14:\n${verifyOut.split('\n').filter(l => l.includes('#10')).join('\n')}`);
+    }
+  } finally {
+    rmSync(reTmp, { recursive: true, force: true });
+  }
+} catch (e) {
+  fail(`merge-tracker re-evaluation test crashed: ${e.message}`);
 }
 
 // ── DEDUP BLINDNESS FROM `---` / "Empresa" IN A DATA ROW (#2265) ─────────
@@ -9502,6 +9762,57 @@ try {
   }
 } catch (e) {
   fail(`URL rediscovery tests crashed: ${e.message}`);
+}
+
+// ── BATCH RUNNER SURVIVES A REFUSED MERGE ───────────────────────
+// merge-tracker exits 1 when it refuses a TSV whose number breaks the
+// report-number rule (the rest still merge). batch-runner.sh runs under
+// `set -euo pipefail`, so an unguarded call aborted reconcile, verify, and the
+// batch summary for every other row (PR #7 review [2]).
+console.log('\nBatch runner: refused merge does not abort the run');
+try {
+  const tmp = mkdtempSync(join(tmpdir(), 'co-batch-refused-merge-'));
+  const batchDir = join(tmp, 'batch');
+  const fakeBin = join(tmp, 'bin');
+  mkdirSync(batchDir, { recursive: true });
+  mkdirSync(join(tmp, 'reports'), { recursive: true });
+  mkdirSync(join(tmp, 'data'), { recursive: true });
+  mkdirSync(fakeBin, { recursive: true });
+  writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  if (process.platform === 'win32') {
+    try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
+  } else {
+    execFileSync('chmod', ['+x', join(batchDir, 'batch-runner.sh')]);
+  }
+  // merge-tracker refuses a row and exits 1; the later steps must still run.
+  writeFileSync(join(tmp, 'merge-tracker.mjs'), 'console.log("merge fixture"); process.exit(1);\n');
+  writeFileSync(join(tmp, 'reconcile-pipeline.mjs'), 'console.log("reconcile fixture");\n');
+  writeFileSync(join(tmp, 'verify-pipeline.mjs'), 'console.log("verify fixture");\n');
+  writeFileSync(join(batchDir, 'batch-prompt.md'), 'URL={{URL}}\n');
+  writeFileSync(join(batchDir, 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/one\tfixture\t-\n');
+  writeFileSync(join(fakeBin, 'claude'), [
+    '#!/usr/bin/env bash',
+    'echo "You\\x27ve hit your session limit · resets 12:30pm (Asia/Taipei)"',
+    'exit 1',
+  ].join('\n') + '\n');
+  if (process.platform === 'win32') {
+    try { execFileSync(getBash(), ['-c', 'chmod +x bin/claude'], { cwd: tmp }); } catch {}
+  } else {
+    execFileSync('chmod', ['+x', join(fakeBin, 'claude')]);
+  }
+  const env = { ...process.env, PATH: `${fakeBin}${delimiter}${process.env.PATH}` };
+  const out = run(getBash(), [toBashPath(join(batchDir, 'batch-runner.sh')), '--parallel', '1', '--rate-limit-sleep', '0'], {
+    cwd: tmp, env, stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (out !== null && out.includes('merge fixture') && out.includes('refused some rows')
+      && out.includes('verify fixture') && out.includes('=== Batch Summary ===')) {
+    pass('a refused merge is reported and reconcile, verify, and the summary still run');
+  } else {
+    fail(`batch runner stopped at the refused merge: ${JSON.stringify((out ?? '(non-zero exit)').slice(-300))}`);
+  }
+  rmSync(tmp, { recursive: true, force: true });
+} catch (e) {
+  fail(`batch runner refused-merge test crashed: ${e.message}`);
 }
 
 // ── 13. BATCH RATE-LIMIT PAUSE ──────────────────────────────────
@@ -12067,7 +12378,8 @@ try {
   }
 
   if (
-    prepFlat.includes('If a report DOES exist, ignore the URL fetch and use the report — the report stays authoritative') &&
+    prepFlat.includes('ignore the URL fetch, the report stays authoritative') &&
+    prepFlat.includes('node find.mjs') &&
     prepFlat.includes('a bare URL routes to `auto-pipeline`, not here')
   ) {
     pass('interview-prep URL entry: report stays authoritative, bare URL still routes to auto-pipeline');
@@ -12478,7 +12790,7 @@ try {
   }
 
   if (
-    planFlat.includes('interview-prep/{company-slug}-{role-slug}.md') &&
+    planFlat.includes('interview-prep/{NNN}-{company-slug}-{role-slug}.md') &&
     planFlat.includes('never re-search work that\'s already been done and cited')
   ) {
     pass('interview/plan reuses an existing interview-prep file instead of re-searching');

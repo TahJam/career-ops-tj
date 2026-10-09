@@ -162,8 +162,58 @@ func LoadPDFManifest(careerOpsPath string) PDFManifest {
 }
 
 // rePDFDate extracts the trailing YYYY-MM-DD stamp from generated CV
-// filenames (cv-{candidate}-{slug}-{date}.pdf).
+// filenames (pre-2026-10 cv-{candidate}-{slug}-{NNN}-{date}.pdf). Current
+// names (cv-{company-slug}-{NNN}.pdf) carry no date and sort by mtime.
 var rePDFDate = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})\.pdf$`)
+
+// reCVReportNum pulls the report number out of a generated CV filename:
+// cv-{company}-{NNN}[-latex|-canva][-{date}].{pdf,html}. Both the current
+// form (cv-acme-278.pdf) and the dated pre-2026-10 form
+// (cv-taher-jamali-acme-278-2026-10-06.pdf) match; a legacy company-only name
+// (cv-candidate-acme-2026-09-02.pdf) carries no number and does not. Requiring
+// 3+ digits right before the optional suffix/date keeps a date fragment like
+// "-06" from passing for report 6.
+var reCVReportNum = regexp.MustCompile(`-(\d{3,})(?:-(?:latex|canva))?(?:-\d{4}-\d{2}-\d{2})?\.(?:pdf|html)$`)
+
+// cvReportNumber returns the report number embedded in a CV filename, if any.
+func cvReportNumber(base string) (int, bool) {
+	m := reCVReportNum.FindStringSubmatch(base)
+	if m == nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// narrowByReport filters company-slug filename matches for one application
+// (plans/10-07-26_report-number-as-id.md). A company can have 20 rows, so the
+// slug alone names a company, not an application. Files carrying this report's
+// number win outright. Otherwise files carrying ANOTHER report's number are
+// dropped — they belong to a different application — and legacy files with no
+// number stay, so old CVs remain reachable.
+func narrowByReport(paths []string, reportNumber string) []string {
+	want, err := strconv.Atoi(strings.TrimSpace(reportNumber))
+	if err != nil {
+		return paths
+	}
+	var exact, unnumbered []string
+	for _, p := range paths {
+		n, ok := cvReportNumber(strings.ToLower(filepath.Base(p)))
+		switch {
+		case ok && n == want:
+			exact = append(exact, p)
+		case !ok:
+			unnumbered = append(unnumbered, p)
+		}
+	}
+	if len(exact) > 0 {
+		return exact
+	}
+	return unnumbered
+}
 
 // ResolvePDFs returns candidate PDF paths (relative to careerOpsPath) for an
 // application, best match first.
@@ -203,6 +253,7 @@ func ResolvePDFs(careerOpsPath string, app model.CareerApplication, manifest PDF
 		}
 	}
 
+	matches = narrowByReport(matches, app.ReportNumber)
 	sortPDFsNewestFirst(careerOpsPath, matches)
 	return matches
 }
@@ -286,6 +337,7 @@ func ResolveHTML(careerOpsPath string, app model.CareerApplication) (htmlPath, p
 			}
 		}
 	}
+	matches = narrowByReport(matches, app.ReportNumber)
 	if len(matches) == 0 {
 		return "", ""
 	}

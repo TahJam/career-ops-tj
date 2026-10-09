@@ -14,6 +14,8 @@ After a real interview, capture what was asked, assess what landed and what didn
 
 ## Inputs
 
+**Which application:** when the interview is for a tracked application, take its report number `{NNN}` and read `reports/{NNN}-*.md` and `interview-prep/{NNN}-*.md` from it. If the user names a company instead, run `node find.mjs "<company>"`, show the matches, and wait for the number (AGENTS.md → Selecting an Application).
+
 1. **Interview debrief from candidate** — what questions were asked, how they answered, what felt strong or weak
 2. **Interviewer name and role** — informs next round prediction
 3. **Round outcome** (if known) — moved forward / rejected / pending
@@ -160,7 +162,7 @@ Be honest. A probability range with clear reasoning is more useful than false co
 
 ## Step 8 — Save Debrief
 
-Append to `interview-prep/{company-slug}-{role-slug}.md`:
+Append to `interview-prep/{NNN}-{company-slug}-{role-slug}.md`:
 
 ```markdown
 ## Round [N] Debrief — [YYYY-MM-DD]
@@ -193,7 +195,7 @@ Append to `interview-prep/{company-slug}-{role-slug}.md`:
 
 ## Step 9 — Write Session Transcript
 
-After the debrief, also write a machine-readable session transcript to `interview-prep/sessions/{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md`. This is a structured record of the round for downstream analysis modes; the speaker-labelled turns let a consumer read either side without re-inferring who spoke. The full contract lives in `interview-prep/sessions/README.md`.
+After the debrief, also write a machine-readable session transcript to `interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md`, with `report: {NNN}` in its front matter (omit both for a role that was never evaluated). This is a structured record of the round for downstream analysis modes; the speaker-labelled turns let a consumer read either side without re-inferring who spoke. The full contract lives in `interview-prep/sessions/README.md`.
 
 **Check the `input_source` marker set in Step 1.** If `input_source: transcript`, skip reconstruction: don't regenerate the transcript from Step 1/Step 2 output — that would be a lossier copy of the real source it came from. Instead, save the original transcript directly, lightly normalized to match the schema below (speaker labels, front-matter, competency tags from the Step 2 assessment). If `input_source: recall`, reconstruct the transcript from Step 1/Step 2 output as before — recall never has a verbatim original to preserve.
 

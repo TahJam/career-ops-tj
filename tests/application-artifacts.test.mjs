@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -72,7 +72,7 @@ try {
 
   const cli = spawnSync(process.execPath, [
     fileURLToPath(new URL('../application-artifacts.mjs', import.meta.url)),
-    '--report', 'bad', '--company', 'Acme', '--role', 'Engineer', '--init',
+    '--report', 'bad', '--init',
   ], { encoding: 'utf8' });
   if (cli.status === 1
       && /application-artifacts: reportNum must be a numeric report number/.test(cli.stderr)
@@ -80,6 +80,38 @@ try {
     console.log('  ✅ CLI validation failures exit cleanly without a stack trace');
   } else {
     throw new Error(`CLI failure was not clean: status=${cli.status} stderr=${JSON.stringify(cli.stderr)}`);
+  }
+
+  // The CLI keys the bundle on the report number and reads company and role
+  // from that report's tracker row (plans/10-07-26_report-number-as-id.md).
+  const tracker = join(root, 'applications.md');
+  writeFileSync(tracker, [
+    '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |',
+    '|---|------|---------|------|-------|--------|-----|--------|-------|',
+    '| 7 | 2026-07-01 | Acme AI | Senior AI Engineer | 4.2/5 | Evaluated | ❌ | [7](../reports/007-acme-ai-2026-07-01.md) | — |',
+  ].join('\n') + '\n');
+  const runCli = (...args) => spawnSync(process.execPath, [
+    fileURLToPath(new URL('../application-artifacts.mjs', import.meta.url)), ...args,
+  ], { encoding: 'utf8', env: { ...process.env, CAREER_OPS_TRACKER: tracker } });
+  const byReport = runCli('--report', '7', '--version', '2', '--root', join(root, 'cli-out'));
+  let printed = null;
+  try { printed = JSON.parse(byReport.stdout); } catch { /* asserted below */ }
+  if (byReport.status === 0 && printed?.key === '007-acme-ai-senior-ai-engineer') {
+    console.log('  ✅ CLI reads company and role from the report\'s tracker row');
+  } else {
+    throw new Error(`CLI --report 7 wrong: status=${byReport.status} stdout=${byReport.stdout} stderr=${byReport.stderr}`);
+  }
+  const withNames = runCli('--report', '7', '--company', 'Other', '--role', 'Other');
+  if (withNames.status === 1 && /Unknown option '--company'/.test(withNames.stderr)) {
+    console.log('  ✅ CLI rejects --company/--role (the report number already names them)');
+  } else {
+    throw new Error(`CLI accepted --company: status=${withNames.status} stderr=${withNames.stderr}`);
+  }
+  const missing = runCli('--report', '99');
+  if (missing.status === 1 && /No tracker row links report #99/.test(missing.stderr)) {
+    console.log('  ✅ CLI reports an unknown report number');
+  } else {
+    throw new Error(`CLI --report 99: status=${missing.status} stderr=${missing.stderr}`);
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

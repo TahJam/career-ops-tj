@@ -4,7 +4,10 @@
  * outcome.mjs — Record application outcomes, archive artifacts, and sync tracker (#1722).
  *
  * Usage:
- *   node outcome.mjs <report#|company> <outcome_type> [--stage "..."] [--feedback "..."] [--note "..."] [--role "..."] [--cv "..."] [--cover "..."] [--dry-run] [--json]
+ *   node outcome.mjs <report#> <outcome_type> [--stage "..."] [--feedback "..."] [--note "..."] [--cv "..."] [--cover "..."] [--dry-run] [--json]
+ *
+ * <report#> is the report number (find.mjs resolveReportNumber). Company names
+ * are refused; look the number up with `node find.mjs "<company>"`.
  *
  * Outcomes:
  *   interview_progress | offer_received | hired | offer_declined | rejected | no_response | interview_only
@@ -23,9 +26,8 @@ import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { parseTrackerRow, resolveColumns, extractTrackerReportNumbers } from './tracker-parse.mjs';
-import { roleFuzzyMatch } from './role-matcher.mjs';
-import { resolveTrackerPath, normalizeCompany } from './tracker-utils.mjs';
-import { parsePdfIndex } from './find.mjs';
+import { resolveTrackerPath } from './tracker-utils.mjs';
+import { parsePdfIndex, resolveReportNumber } from './find.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const NODE = process.execPath;
@@ -67,14 +69,13 @@ const OUTCOME_MAP = {
   interview_only: { state: 'Interview', defaultNote: 'Interview process completed' },
 };
 
-const USAGE = `Usage: node outcome.mjs <report#|company> <outcome_type> [options]
+const USAGE = `Usage: node outcome.mjs <report#> <outcome_type> [options]
 
-  <report#|company>  Tracker selector (# or company name)
+  <report#>          Report number (the NNN in reports/NNN-...md); find it with node find.mjs "<company>"
   <outcome_type>     interview_progress | offer_received | hired | offer_declined | rejected | no_response | interview_only
   --stage "..."      Stage reached (e.g. "Tech Screen", "Final Round")
   --feedback "..."   Verbatim candidate/recruiter feedback
   --note "..."       Custom note to append to tracker
-  --role "..."       Disambiguate company match
   --cv "..."         Path to submitted CV (defaults to cv.md)
   --cover "..."      Path to submitted cover letter
   --url "..."        Job posting URL (overrides auto-detection from tracker notes)
@@ -87,7 +88,6 @@ const flags = {
   stage: null,
   feedback: null,
   note: null,
-  role: null,
   cv: null,
   cover: null,
   url: null,
@@ -106,7 +106,7 @@ function failExit(msg, code, exitCode) {
 
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
-  if (['--stage', '--feedback', '--note', '--role', '--cv', '--cover', '--url'].includes(a)) {
+  if (['--stage', '--feedback', '--note', '--cv', '--cover', '--url'].includes(a)) {
     const val = rawArgs[i + 1];
     if (val === undefined || val.startsWith('--')) {
       failExit(`Missing value for ${a}`, 'usage', EXIT_USAGE);
@@ -129,7 +129,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 }
 
 if (positional.length < 2) {
-  failExit(`Expected 2 positional arguments: <selector> <outcome_type>\n\n${USAGE}`, 'usage', EXIT_USAGE);
+  failExit(`Expected 2 positional arguments: <report#> <outcome_type>\n\n${USAGE}`, 'usage', EXIT_USAGE);
 }
 
 const [selector, rawOutcomeType] = positional;
@@ -160,40 +160,13 @@ if (rows.length === 0) {
   failExit(`Tracker at ${appsFile} is empty`, 'tracker-empty', EXIT_NOT_FOUND);
 }
 
-let matchedRow = null;
-let candidates = [];
-
-if (/^\d+$/.test(selector)) {
-  const num = parseInt(selector, 10);
-  candidates = rows.filter(r => r.num === num);
-  if (candidates.length === 0) {
-    failExit(`No tracker row with #${num}`, 'row-not-found', EXIT_NOT_FOUND);
-  }
-} else {
-  const key = normalizeCompany(selector);
-  candidates = rows.filter(r => normalizeCompany(r.company) === key);
-  if (candidates.length === 0) {
-    candidates = rows.filter(r => normalizeCompany(r.company).includes(key) || key.includes(normalizeCompany(r.company)));
-  }
-  if (candidates.length === 0) {
-    failExit(`No tracker row for company matching "${selector}"`, 'company-not-found', EXIT_NOT_FOUND);
-  }
-}
-
-// Disambiguate if multiple rows are found
-if (candidates.length > 1 && flags.role) {
-  const narrowed = candidates.filter(r => roleFuzzyMatch(r.role, flags.role));
-  if (narrowed.length === 1) {
-    candidates = narrowed;
-  }
-}
-
-if (candidates.length > 1) {
-  const listMsg = candidates.map(c => `#${c.num}: ${c.company} (${c.role})`).join(', ');
-  failExit(`Multiple tracker rows matched "${selector}" (${listMsg}) — pass --role or row #`, 'ambiguous-match', EXIT_AMBIGUOUS);
-}
-
-matchedRow = candidates[0];
+const resolved = resolveReportNumber(rows, selector);
+if (resolved.error === 'usage') failExit(resolved.message, 'usage', EXIT_USAGE);
+if (resolved.error === 'not-found') failExit(resolved.message, 'row-not-found', EXIT_NOT_FOUND);
+if (resolved.error) failExit(resolved.message, 'ambiguous-match', EXIT_AMBIGUOUS);
+const matchedRow = resolved.row;
+// The report number set-status.mjs should resolve: same selector, same resolver.
+const reportNum = String(parseInt(selector, 10));
 
 const companySlug = slugify(matchedRow.company);
 const roleSlug = slugify(matchedRow.role);
@@ -384,16 +357,11 @@ ${newEntry}`;
 // 5. Update tracker via set-status.mjs
 const setStatusArgs = [
   SET_STATUS_SCRIPT,
-  String(matchedRow.num),
+  reportNum,
   outcomeConfig.state,
   '--note', noteToAppend,
-  '--force',
   '--json',
 ];
-
-if (matchedRow.role) {
-  setStatusArgs.push('--role', matchedRow.role);
-}
 
 let setStatusResult = null;
 try {

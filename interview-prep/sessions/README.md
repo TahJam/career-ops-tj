@@ -1,6 +1,8 @@
 # Interview Sessions
 
-Machine-readable interview transcripts, one `.md` file per round. The
+Machine-readable interview transcripts, one `.md` file per round, named
+`{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md` (`{NNN}` is the report
+number; omitted for a practice session or a role never evaluated). The
 `interview/debrief` and `interview/practice` modes write files here automatically
 after a real or practice round. Downstream analysis modes read them; each consumer
 documents its own usage.
@@ -14,6 +16,7 @@ either side without re-inferring who spoke:
 ---
 company: Acme Corp
 role: Instructional Designer
+report: 245
 round: behavioral
 date: 2026-06-01
 interviewer_role: Senior HR Partner
@@ -28,6 +31,10 @@ source: debrief
 
 `round`: `screen | hiring-manager | technical | system-design | behavioral | onsite | final`.
 `source`: `debrief | practice | mock | manual`.
+`report`: the application's report number. Present whenever the session belongs to a
+tracked application; it is the exact link back to `reports/` and `data/applications.md`
+(company and role alone are ambiguous — one company can have several applications).
+Omit it for a practice session or a role that was never evaluated.
 
 ## Competency tags (optional)
 

@@ -1,10 +1,16 @@
 # Mode: pdf — ATS-Optimized PDF Generation
 
+## Invocation
+
+- `/career-ops pdf {NNN}` — tailor a CV for report `{NNN}` (the report number, as in the `**PDF:** not generated — run /career-ops pdf {NNN}` line of a report header). Read `reports/{NNN}-*.md` for the JD, archetype, and gaps; its filename gives the `{company-slug}`, and `{NNN}` is the value passed to `--report` in step 20. `batch-tailor.mjs` workers receive the same report number in their prompt.
+- `/career-ops pdf` with a pasted JD and no report — a one-off CV (see the one-off rule under step 20).
+- A company name or slug is not a selector: run `node find.mjs "<name>"`, show the matches, and wait for the user to give the report number (AGENTS.md → Selecting an Application).
+
 ## Full pipeline
 
 ## Application-scoped artifacts
 
-When a CV is reused or lightly tailored for an existing application, initialize a bundle with `npm run application:init -- --report {report-number} --company "{company}" --role "{role}" --version 1`. Keep the current JD at `jd/current.md`, the comparison JD at `jd/previous.md`, the source CV at `cv/source/original.html`, the tailored CV at `cv/tailored/v001/cv.html`, the PDF at `cv/tailored/v001/cv.pdf`, the change notes at `cv/tailored/v001/changes.md`, and the reuse decision at `decision/reuse.json` under the printed bundle root. Resolve the application/report first with `node find.mjs {report-or-tracker-number}` so the bundle uses the report number, not an ambiguous tracker row.
+When a CV is reused or lightly tailored for an existing application, initialize a bundle with `npm run application:init -- --report {report-number} --version 1` (company and role come from that report's tracker row). Keep the current JD at `jd/current.md`, the comparison JD at `jd/previous.md`, the source CV at `cv/source/original.html`, the tailored CV at `cv/tailored/v001/cv.html`, the PDF at `cv/tailored/v001/cv.pdf`, the change notes at `cv/tailored/v001/changes.md`, and the reuse decision at `decision/reuse.json` under the printed bundle root. Resolve the application/report first with `node find.mjs {report-or-tracker-number}` so the bundle uses the report number, not an ambiguous tracker row.
 
 Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previous.md` when both comparison sources exist. Record the visible decision (`reuse`, `reuse-with-edits`, or `regenerate`), score, source CV/JD paths, and changed sections in `decision/reuse.json`. Strongly discourage applications scoring below 4.0/5 and proceed only when the user explicitly overrides that recommendation. Reuse only after a visible `reuse` result or an explicit user override; never silently reuse when a source is missing. The PDF manifest supports these nested paths and continues to link them to the report. Flat `output/` paths remain valid for one-off PDFs.
 
@@ -35,22 +41,22 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 13. Fold 6-8 JD-relevant keyword phrases into the `skills` array as an additional category (e.g. `{"category": "Focus Areas", "items": [...]}`), prioritizing `existing` and `supportedByResume` skills from Step 4 — never a `gap` skill. (Core Competencies was merged into Skills, #2201 — there is no separate competency-grid section in the base template.)
 14. Inject keywords naturally into existing achievements (NEVER invent)
 15. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: top third must make target role, strongest fit, and proof obvious
-16. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
-17. Build the render payload (see the **JSON Input Schema** below) from the tailored content — emit compact structured JSON, **not** full HTML markup — and write it to `/tmp/cv-{candidate}-{company}-{NNN}.json`
-18. Run `node build-cv-html.mjs /tmp/cv-{candidate}-{company}-{NNN}.json {html-path} {template}`, where `{html-path}` is the active bundle's `cv/tailored/vNNN/cv.html` or `output/cv-{candidate}-{company}-{NNN}.html` for a flat CV (`{NNN}` is the report number — see the warning under step 20), and `{template}` is the path printed by **Selecting the template** below (omit it to use the base template). The script owns every tag, CSS class, and HTML escaping. Keep the HTML outside temporary storage because the dashboard's `D` hotkey regenerates from it.
+16. Name the flat CV `cv-{company-slug}-{NNN}`: `{company-slug}` is the slug in the report filename (`reports/{NNN}-{company-slug}-{YYYY-MM-DD}.md`) and `{NNN}` is the report number. No candidate name: one career-ops instance belongs to one person.
+17. Build the render payload (see the **JSON Input Schema** below) from the tailored content — emit compact structured JSON, **not** full HTML markup — and write it to `/tmp/cv-{company-slug}-{NNN}.json`
+18. Run `node build-cv-html.mjs /tmp/cv-{company-slug}-{NNN}.json {html-path} {template}`, where `{html-path}` is the active bundle's `cv/tailored/vNNN/cv.html` or `output/cv-{company-slug}-{NNN}.html` for a flat CV (`{NNN}` is the report number — see the warning under step 20), and `{template}` is the path printed by **Selecting the template** below (omit it to use the base template). The script owns every tag, CSS class, and HTML escaping. Keep the HTML outside temporary storage because the dashboard's `D` hotkey regenerates from it.
 19. Run the fact gate against the generated HTML: `node verify-cv-facts.mjs {html-path}`
     - This is a hard gate before PDF rendering.
     - If it fails, stop and fix the generated HTML by removing invented metrics or adding verified evidence to `cv.md`, `article-digest.md`, or `config/cv-facts.json`.
-20. Execute: `node generate-pdf.mjs {html-path} {pdf-path} --format={letter|a4} --report={report number}`, where `{pdf-path}` is the active bundle's `cv/tailored/vNNN/cv.pdf` or `output/cv-{candidate}-{company}-{NNN}-{YYYY-MM-DD}.pdf` for a flat CV. `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open and regenerate the exact nested or flat HTML/PDF pair. Omit it only for one-off CVs with no tracker entry.
+20. Execute: `node generate-pdf.mjs {html-path} {pdf-path} --format={letter|a4} --report={report number}`, where `{pdf-path}` is the active bundle's `cv/tailored/vNNN/cv.pdf` or `output/cv-{company-slug}-{NNN}.pdf` for a flat CV. `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open and regenerate the exact nested or flat HTML/PDF pair. Omit it only for one-off CVs with no tracker entry.
     - The rendered PDF has a two-page warning threshold by default. `--max-pages=N` accepts a positive integer; pass `--max-pages=1` when the user or market prefers a one-page CV.
     - If the rendered PDF exceeds its threshold, generation warns loudly with the actual and allowed page counts plus trimming guidance, then reports and indexes the unchanged PDF so existing longer-CV flows keep working.
     - Pass `--strict-pages` only when the user or market requires a hard limit. Strict overflow leaves the draft available for inspection but does not report or index it as successful; trim lower-priority content and rerun.
 
-> **Flat CV paths must carry `{NNN}`, the report number.** It is the only thing keeping two roles at the same company from overwriting each other's CV, and both the HTML and the PDF need it. This mode is not only driven interactively: `batch-tailor.mjs` spawns one `claude -p --append-system-prompt-file modes/pdf.md` worker per completed batch row scoring at or above `--min-score`, and those workers run sequentially against the same `output/` directory. With a company-slug-only name, each worker silently destroys its predecessor's tailored CV while every affected report keeps pointing at a `**PDF:**` path that now holds someone else's document. Use the same value you pass to `--report`, so the pair matches `reports/{NNN}-{company}-{YYYY-MM-DD}.md` 1:1.
+> **Flat CV paths must carry `{NNN}`, the report number.** It is the only thing keeping two roles at the same company from overwriting each other's CV, and both the HTML and the PDF need it. This mode is not only driven interactively: `batch-tailor.mjs` spawns one `claude -p --append-system-prompt-file modes/pdf.md` worker per completed batch row scoring at or above `--min-score`, and those workers run sequentially against the same `output/` directory. With a company-slug-only name, each worker silently destroys its predecessor's tailored CV while every affected report keeps pointing at a `**PDF:**` path that now holds someone else's document. Use the same value you pass to `--report`, so the pair matches `reports/{NNN}-{company}-{YYYY-MM-DD}.md` 1:1. The name carries no candidate name and no date: the report number already makes it unique, and `npm run export-cv {NNN}` produces the clean application-ready copy.
 >
 > The same applies to the `/tmp` render payload. It is written in one step and read in the next, so a second worker tailoring another role at the same company can overwrite it in between — which is worse than a filename clash, because the CV then renders someone else's content under the correct name.
 >
-> Only a true one-off CV — no report, no tracker row, nothing to collide with — may omit `{NNN}` and use `output/cv-{candidate}-{company}.html`. A bundle path (`cv/tailored/vNNN/cv.{html,pdf}`) is already collision-proof: its bundle key includes the report number and role.
+> Only a true one-off CV — no report, no tracker row, nothing to collide with — may omit `{NNN}` and use `output/cv-{company-slug}.html`. A bundle path (`cv/tailored/vNNN/cv.{html,pdf}`) is already collision-proof: its bundle key includes the report number and role.
 
 21. Report: PDF path, number of pages, keyword coverage %, and any skill gaps from Step 4 still unaddressed
 
@@ -220,7 +226,7 @@ URLs so the saved HTML remains portable. To inspect the result before PDF
 generation, run:
 
 ```bash
-node build-cv-html.mjs --preview /tmp/cv-{candidate}-{company}-{NNN}.json {template}
+node build-cv-html.mjs --preview /tmp/cv-{company-slug}-{NNN}.json {template}
 ```
 
 The preview is written to `output/cv-preview.html`. A missing, unreadable, empty,
@@ -291,15 +297,20 @@ f. `commit-editing-transaction` to save (ONLY after user approval)
 a. `export-design` the duplicate as PDF (format: a4 or letter based on JD location)
 b. **IMMEDIATELY** download the PDF using Bash:
    ```bash
-   curl -sL -o "output/cv-{candidate}-{company}-{NNN}-canva-{YYYY-MM-DD}.pdf" "{download_url}"
+   curl -sL -o "output/cv-{company-slug}-{NNN}-canva.pdf" "{download_url}"
    ```
    The export URL is a pre-signed S3 link that expires in ~2 hours. Download it right away.
 c. Verify the download:
    ```bash
-   file output/cv-{candidate}-{company}-{NNN}-canva-{YYYY-MM-DD}.pdf
+   file output/cv-{company-slug}-{NNN}-canva.pdf
    ```
    Must show "PDF document". If it shows XML or HTML, the URL expired — re-export and retry.
-d. Report: PDF path, file size, Canva design URL (for manual tweaking)
+d. Record it as the report's PDF, so `export-cv.mjs`, `find.mjs`, and the dashboard find it like a generated CV:
+   ```bash
+   node mark-pdf-ready.mjs {NNN} --pdf output/cv-{company-slug}-{NNN}-canva.pdf
+   ```
+   This replaces the report's previous PDF in `data/pdf-index.tsv`: the last CV generated for a report is the one exported. Skip it for a one-off with no report.
+e. Report: PDF path, file size, Canva design URL (for manual tweaking)
 
 #### Error handling
 
@@ -317,7 +328,7 @@ CV PDF generated: output/{path}
 
 Want a cover letter for this role too?
 - Say "yes" or "cover letter" to generate one now
-- Or run `/career-ops cover {slug}` later
+- Or run `/career-ops cover {NNN}` later
 ```
 
 Apply `voice-dna.md` (if present) to the cover letter — full guardrail, conversational voice included (Tier 1 + Tier 2). The CV PDF itself stays Tier 1 only (formal ATS register). See `_writing.md` → Voice DNA.

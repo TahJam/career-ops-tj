@@ -11,14 +11,17 @@
  * atomic write, same shared tracker-parse/tracker-utils primitives.
  *
  * Usage:
- *   node mark-pdf-ready.mjs <report#> [--dry-run] [--json]
+ *   node mark-pdf-ready.mjs <report#> [--pdf <path>] [--dry-run] [--json]
+ *
+ * --pdf records <path> as the report's PDF in data/pdf-index.tsv (through
+ * lib/pdf-manifest.mjs, like generate-pdf.mjs and generate-latex.mjs) before
+ * flipping the column. It is for a PDF no generator wrote, such as a Canva
+ * export, so export-cv.mjs and find.mjs can find it
+ * (plans/10-07-26_report-number-as-id.md).
  *
  * Row resolution is by REPORT NUMBER (the NNN in reports/NNN-{slug}-{date}.md),
- * not the tracker `#` column — those two numbers differ by design (see
- * modes/pdf.md step 19's own comment), and callers of this script always have
- * the report number, not the tracker row id. Resolution matches
- * extractTrackerReportNumbers(row.report) against the given report number;
- * zero or 2+ matches fail closed rather than guessing.
+ * through find.mjs resolveReportNumber(): the row whose Report cell links that
+ * number. Zero or 2+ matches fail closed rather than guessing.
  *
  * Idempotent: a row whose PDF cell is already ✅ is a no-op success (changed:
  * false), so a retried render never fails this step.
@@ -35,12 +38,14 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, extname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { extractTrackerReportNumbers, resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveReportNumber } from './find.mjs';
 import {
   rebuildRow, resolveTrackerPath, writeFileAtomic, CLI_EXIT, makeCliFailWith, acquireTrackerLockForCli,
 } from './tracker-utils.mjs';
+import { updatePDFManifest, repoRelativeManifestPath } from './lib/pdf-manifest.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 
@@ -48,9 +53,11 @@ const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 // acquireTrackerLockForCli() itself (tracker-utils.mjs), via CLI_EXIT.LOCK_TIMEOUT.
 const { OK: EXIT_OK, USAGE: EXIT_USAGE, NOT_FOUND: EXIT_NOT_FOUND, AMBIGUOUS: EXIT_AMBIGUOUS } = CLI_EXIT;
 
-const USAGE = `Usage: node mark-pdf-ready.mjs <report#> [--dry-run] [--json]
+const USAGE = `Usage: node mark-pdf-ready.mjs <report#> [--pdf <path>] [--dry-run] [--json]
 
   <report#>    The NNN from reports/NNN-{slug}-{date}.md (NOT the tracker # column)
+  --pdf <path> Also record <path> (a .pdf inside career-ops, e.g. a Canva export)
+               as this report's PDF in data/pdf-index.tsv
   --dry-run    Resolve and validate, but write nothing
   --json       Machine-readable output on stdout (errors included)`;
 
@@ -58,11 +65,19 @@ const USAGE = `Usage: node mark-pdf-ready.mjs <report#> [--dry-run] [--json]
 
 const rawArgs = process.argv.slice(2);
 const positional = [];
-const flags = { dryRun: false, json: false };
+const flags = { dryRun: false, json: false, pdf: null };
 
-for (const a of rawArgs) {
+for (let i = 0; i < rawArgs.length; i++) {
+  const a = rawArgs[i];
   if (a === '--dry-run') { flags.dryRun = true; }
   else if (a === '--json') { flags.json = true; }
+  else if (a.startsWith('--pdf=')) { flags.pdf = a.slice('--pdf='.length); }
+  else if (a === '--pdf') {
+    const value = rawArgs[i + 1];
+    if (value === undefined || value.startsWith('--')) failUsage('Missing value for --pdf');
+    flags.pdf = value;
+    i++;
+  }
   else if (a.startsWith('--')) { failUsage(`Unknown flag: ${a}`); }
   else { positional.push(a); }
 }
@@ -100,6 +115,16 @@ if (!/^\d+$/.test(reportSelector)) {
 }
 const targetReportNum = parseInt(reportSelector, 10);
 
+// --pdf is validated before the tracker is touched. Index paths are resolved
+// against the career-ops root by every reader, so the file must live inside it.
+let pdfPath = null;
+if (flags.pdf !== null) {
+  pdfPath = resolve(flags.pdf);
+  if (extname(pdfPath).toLowerCase() !== '.pdf') failUsage(`--pdf must name a .pdf file, got "${flags.pdf}"`);
+  if (!existsSync(pdfPath)) failUsage(`--pdf file not found: ${flags.pdf}`);
+  if (!repoRelativeManifestPath(pdfPath)) failUsage(`--pdf must be inside the career-ops directory (e.g. output/), got "${flags.pdf}"`);
+}
+
 // ── tracker access ───────────────────────────────────────────────
 
 const APPS_FILE = resolveTrackerPath(CAREER_OPS);
@@ -133,22 +158,22 @@ if (rows.length === 0) {
   failWith(EXIT_NOT_FOUND, 'empty-tracker', `Tracker at ${APPS_FILE} has no data rows`);
 }
 
-const matches = rows.filter(r => extractTrackerReportNumbers(r.report).includes(targetReportNum));
-if (matches.length === 0) {
-  failWith(EXIT_NOT_FOUND, 'not-found', `No tracker row links report #${targetReportNum}`);
+// One shared definition of "the row for report N" (find.mjs
+// resolveReportNumber) instead of a local copy. The selector was validated as
+// numeric above, so only not-found and ambiguous (two rows linking one report,
+// a tracker data bug verify-pipeline flags) can come back.
+const resolved = resolveReportNumber(rows, reportSelector);
+if (resolved.error === 'not-found') {
+  failWith(EXIT_NOT_FOUND, 'not-found', resolved.message);
 }
-if (matches.length > 1) {
-  // An ambiguous report-number-to-row mapping is a tracker data bug (two rows
-  // linking the same report), not a legitimate disambiguation case — refuse
-  // to guess which one to mark, same fail-closed stance as set-status.mjs's
-  // duplicate-# guard.
-  const candidates = matches.map(r => ({ num: r.num, company: r.company, role: r.role }));
-  const listing = candidates.map(c => `#${c.num}\t${c.company}\t${c.role}`).join('\n');
-  failWith(EXIT_AMBIGUOUS, 'ambiguous',
-    `Report #${targetReportNum} is linked by ${matches.length} tracker rows — repair the Report cells:\n${listing}`,
-    { candidates });
+if (resolved.error) {
+  failWith(EXIT_AMBIGUOUS, 'ambiguous', resolved.message, { candidates: resolved.candidates });
 }
-const target = matches[0];
+const target = resolved.row;
+
+// Record the PDF first: the index row is what export-cv.mjs and find.mjs read,
+// and the ✅ below only claims a PDF exists.
+const manifest = pdfPath && !flags.dryRun ? updatePDFManifest(reportSelector, pdfPath, '', '') : null;
 
 // ── locked read-modify-write ─────────────────────────────────────
 
@@ -179,6 +204,7 @@ const result = {
   company: target.company,
   role: target.role,
   reportNum: targetReportNum,
+  ...(pdfPath ? { pdf: repoRelativeManifestPath(pdfPath), recorded: Boolean(manifest) } : {}),
   ...(flags.dryRun ? { dryRun: true } : {}),
   tracker: APPS_FILE,
 };
@@ -188,5 +214,6 @@ if (flags.json) {
 } else {
   const verb = flags.dryRun ? (alreadyReady ? 'already' : 'would mark') : changed ? 'marked' : 'already';
   console.log(`✅ #${target.num} ${target.company} — ${target.role}: ${verb} PDF ready`);
+  if (manifest) console.log(`🔗 Manifest: data/pdf-index.tsv records ${manifest} for report ${targetReportNum}`);
 }
 process.exit(EXIT_OK);

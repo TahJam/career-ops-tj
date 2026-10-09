@@ -39,7 +39,7 @@ Before generating any application answers, verify that the form still points to 
 2. If the name is not available, check the tracker for `?` rows with the same Via + a similar role (the same agency re-blasting one listing) and for similar-role rows at plausible-match companies; surface anything close.
 3. Then STOP and require explicit user acknowledgment before the agency is authorized: "The end employer is unknown, so I cannot verify you haven't already applied to this company directly. Authorize anyway?" Never proceed on silence — the reveal-time check only catches damage after the fact.
 
-**Repeat-application ATS profile check (#1920):** count the visible company's rows in `data/applications.md` (the same company-name match Step 2 already uses to search `reports/`). If this submission would be the 2nd or later application to that company, surface a reminder before drafting — this is separate from the Ashby email-dedup quirk below (that one is about the *current* submission getting silently merged; this one is about *older* submissions, possibly predating the candidate's current resume-generation workflow, resurfacing and contradicting the current materials):
+**Repeat-application ATS profile check (#1920):** count the visible company's rows in `data/applications.md` (a per-company count — it reads every row for the company, it never picks one). If this submission would be the 2nd or later application to that company, surface a reminder before drafting — this is separate from the Ashby email-dedup quirk below (that one is about the *current* submission getting silently merged; this one is about *older* submissions, possibly predating the candidate's current resume-generation workflow, resurfacing and contradicting the current materials):
 
 > "You've applied to {Company} {N} times before. Some ATS platforms (Workday in particular) retain and cross-reference a candidate's full application history. Before submitting, consider checking your candidate profile/application history in their portal for consistency with your current materials — especially if any earlier applications predate your current resume-generation workflow."
 
@@ -121,15 +121,16 @@ If a field matches, warn the candidate BEFORE generating or filling an answer fo
 **Without Playwright:** Ask the candidate to:
 - Share a screenshot of the form (Read tool can read images)
 - Or paste the form questions as text
-- Or say company + role so we can search for it
+- Or give the report number (or say company + role, and we look the number up with `find.mjs`)
 
 ## Step 2 — Identify and search for context
 
-1. Extract company name and role title from the page
-2. Search in `reports/` by company name (case-insensitive grep)
-3. If there is a match → load the full report
-4. If there is a Section H or `## Application Answers` → load previous answers as a base
-5. If there is NO match → notify and offer to run a quick auto-pipeline
+1. Extract company name, role title, and the page URL from the page
+2. Find the report by **URL first**: search the `**URL:**` header lines in `reports/` for the form's URL (or the posting URL it was opened from). A posting URL identifies one application exactly.
+3. No URL match → run `node find.mjs "<company>"` and show the matching rows. **Do not grep `reports/` by company name and pick one** — one company can have many reports, and answers drafted from the wrong report go to the wrong application. Ask the candidate which report number this form is for, or whether none is (AGENTS.md → Selecting an Application).
+4. Once the report number is confirmed → load `reports/{NNN}-*.md`
+5. If there is a Section H or `## Application Answers` → load previous answers as a base
+6. If no report is this role → notify and offer to run a quick auto-pipeline
 
 ## Step 3 — Detect changes in the role
 
@@ -171,7 +172,7 @@ Never invent answers for legal, demographic, work-authorization, visa/sponsorshi
 
 For each question, generate the response following:
 
-1. **Report context**: Use proof points from block B. For STAR stories, check `interview-prep/{company-slug}-{role-slug}.md` first, then `interview-prep/story-bank.md` — if neither exists yet, note "no prepared story yet — run `interview-prep`" instead of inventing one
+1. **Report context**: Use proof points from block B. For STAR stories, check `interview-prep/{NNN}-*.md` (this report's prep file) first, then `interview-prep/story-bank.md` — if neither exists yet, note "no prepared story yet — run `interview-prep`" instead of inventing one
 2. **Previous Section H / Application Answers**: If a draft or final response exists, use it as a base and refine
 3. **"I'm choosing you" tone**: Same auto-pipeline framework
 4. **Specificity**: Reference something specific from the JD visible on screen
@@ -227,7 +228,7 @@ node application-answers.mjs --report reports/NNN-company-role-date.md --input a
 
 If the candidate confirms that they submitted the application:
 1. Update status to Applied via the canonical CLI: `node set-status.mjs <report#> Applied` (never hand-edit the table). If the candidate submitted on a different day than today, add `--on YYYY-MM-DD` with the actual submission date — the status-log ledger should record when it happened, not when it was typed in.
-2. Seed the follow-up schedule: run `node followup-seed.mjs {num} --json` (where `{num}` is the tracker row number). If the candidate applied on a different day than today, pass `--date YYYY-MM-DD` with the actual submission date. It's idempotent, so re-running is safe. (`--on` and `--date` are the same concept — the real submission date — each under its own script's flag name; pass the same value to both.)
+2. Seed the follow-up schedule: run `node followup-seed.mjs {num} --json` (where `{num}` is the report number — the same number as the tracker row). If the candidate applied on a different day than today, pass `--date YYYY-MM-DD` with the actual submission date. It's idempotent, so re-running is safe. (`--on` and `--date` are the same concept — the real submission date — each under its own script's flag name; pass the same value to both.)
 3. Refresh the report's `## Application Answers` section with the final field values and `**State:** submitted`
 4. Suggest next step: run the `contacto` mode (`/career-ops contacto` where available) for LinkedIn outreach
 

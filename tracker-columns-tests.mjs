@@ -69,13 +69,19 @@ function syncAndQueryRow(sb, company) {
   return { sync, query, row };
 }
 
-// Create a sandbox dir holding a tracker file and an additions dir.
+// Report stubs every sandbox carries: a row's # is its report number, so
+// verify-pipeline (Check 14) and merge-tracker require each row to link one.
+const SANDBOX_REPORTS = ['001-acme-2026-01-01.md', '002-globex-2026-02-02.md'];
+
+// Create a sandbox dir holding a tracker file, an additions dir, and reports/.
 function makeSandbox(trackerContent, additions = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'co-cols-'));
   const tracker = join(dir, 'applications.md');
   const additionsDir = join(dir, 'tracker-additions');
   const lock = join(dir, 'lock');
   mkdirSync(additionsDir, { recursive: true });
+  mkdirSync(join(dir, 'reports'), { recursive: true });
+  for (const name of SANDBOX_REPORTS) writeFileSync(join(dir, 'reports', name), '# report\n');
   writeFileSync(tracker, trackerContent);
   for (const [name, content] of Object.entries(additions)) {
     writeFileSync(join(additionsDir, name), content);
@@ -105,19 +111,19 @@ const HEADER_10 = `# Applications Tracker
 
 | # | Date | Company | Role | Location | Score | Status | PDF | Report | Notes |
 |---|------|---------|------|----------|-------|--------|-----|--------|-------|
-| 1 | 2026-01-01 | Acme | Engineer | Remote | 4.0/5 | Applied | ✅ | — | seed row |
+| 1 | 2026-01-01 | Acme | Engineer | Remote | 4.0/5 | Applied | ✅ | [1](reports/001-acme-2026-01-01.md) | seed row |
 `;
 
 const HEADER_9 = `# Applications Tracker
 
 | # | Date | Company | Role | Score | Status | PDF | Report | Notes |
 |---|------|---------|------|-------|--------|-----|--------|-------|
-| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Applied | ✅ | — | seed row |
+| 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Applied | ✅ | [1](reports/001-acme-2026-01-01.md) | seed row |
 `;
 
 // TSV column order (status BEFORE score): num,date,company,role,status,score,pdf,report,notes[,location]
-const TSV_WITH_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnew row\tSingapore\n';
-const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnew row\n';
+const TSV_WITH_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[2](reports/002-globex-2026-02-02.md)\tnew row\tSingapore\n';
+const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[2](reports/002-globex-2026-02-02.md)\tnew row\n';
 
 // ── Test 1: 10-column tracker merges into the correct columns ──────────────
 {
@@ -197,8 +203,7 @@ const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\
 // ── Test 5: removeRowByNum resolves the Report column by header ─────────────
 {
   const { removeRowByNum } = await import('./tracker.mjs');
-  const tenCol = HEADER_10.replace('| — | seed row |', '| [1](reports/001-acme-2026-01-01.md) | seed row |');
-  const res = removeRowByNum(tenCol, 1);
+  const res = removeRowByNum(HEADER_10, 1);
   if (res.removed && res.report === '[1](reports/001-acme-2026-01-01.md)') {
     pass('removeRowByNum: report column resolved by header on 10-col tracker');
   } else {
@@ -270,7 +275,7 @@ const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\
 
 | # | Date | Company | Priority | Role | Score | Status | PDF | Report | Notes |
 |---|------|---------|----------|------|-------|--------|-----|--------|-------|
-| 1 | 2026-01-01 | Acme | high | Engineer | 4.0/5 | Applied | ✅ | — | seed row |
+| 1 | 2026-01-01 | Acme | high | Engineer | 4.0/5 | Applied | ✅ | [1](reports/001-acme-2026-01-01.md) | seed row |
 `;
   const sb = makeSandbox(HEADER_UNKNOWN);
 
@@ -389,7 +394,7 @@ const HEADER_VIA = `# Applications Tracker
 // field (`via=Hays`) instead of another positional slot, so a stale writer
 // omitting the empty-location pad can't silently shift columns.
 {
-  const TSV_VIA = '3\t2026-02-02\t?\tPlatform Engineer\tApplied\t4.1/5\t✅\t—\tblind agency listing\tvia=Hays\n';
+  const TSV_VIA = '3\t2026-02-02\t?\tPlatform Engineer\tApplied\t4.1/5\t✅\t[3](reports/003-tsv-fixture.md)\tblind agency listing\tvia=Hays\n';
   const sb = makeSandbox(HEADER_VIA, { '3-blind.tsv': TSV_VIA });
   const res = runScript('merge-tracker.mjs', [], sb);
   const row = dataRows(sb.tracker).find(l => l.includes('Platform Engineer'));
@@ -405,8 +410,8 @@ const HEADER_VIA = `# Applications Tracker
 
 // ── Test 11: ambiguous TSV extras are rejected loudly, never merged ─────────
 {
-  const TWO_UNTAGGED = '4\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnote\tSingapore\tHays\n';
-  const TWO_TAGS = '5\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnote\tvia=Hays\tvia=Randstad\n';
+  const TWO_UNTAGGED = '4\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[4](reports/004-tsv-fixture.md)\tnote\tSingapore\tHays\n';
+  const TWO_TAGS = '5\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t[5](reports/005-tsv-fixture.md)\tnote\tvia=Hays\tvia=Randstad\n';
   const sb = makeSandbox(HEADER_VIA, { '4-a.tsv': TWO_UNTAGGED, '5-b.tsv': TWO_TAGS });
   const res = runScript('merge-tracker.mjs', [], sb);
   const rows = dataRows(sb.tracker);
@@ -426,8 +431,8 @@ const HEADER_VIA = `# Applications Tracker
 // hazard the Via column exists to surface. Same agency + same role IS the
 // re-blast duplicate and must still merge/update.
 {
-  const OTHER_AGENCY = '6\t2026-02-02\t?\tData Engineer\tApplied\t4.5/5\t✅\t—\tsame role, other agency\tvia=Randstad\n';
-  const SAME_AGENCY = '7\t2026-02-03\t?\tData Engineer\tApplied\t4.6/5\t✅\t—\tre-blast, higher score\tvia=Hays\n';
+  const OTHER_AGENCY = '6\t2026-02-02\t?\tData Engineer\tApplied\t4.5/5\t✅\t[6](reports/006-tsv-fixture.md)\tsame role, other agency\tvia=Randstad\n';
+  const SAME_AGENCY = '7\t2026-02-03\t?\tData Engineer\tApplied\t4.6/5\t✅\t[7](reports/007-tsv-fixture.md)\tre-blast, higher score\tvia=Hays\n';
   const sb = makeSandbox(HEADER_VIA, { '6-other.tsv': OTHER_AGENCY });
   const res1 = runScript('merge-tracker.mjs', [], sb);
   const rowsAfter1 = dataRows(sb.tracker).filter(l => l.includes('Data Engineer'));
@@ -453,8 +458,8 @@ const HEADER_VIA = `# Applications Tracker
 // cross-channel guard would see 'Hays' ≠ '' and add a second ? row instead of
 // updating the same-agency re-blast.
 {
-  const FIRST = '2\t2026-02-02\t?\tData Engineer\tApplied\t4.1/5\t✅\t—\tblind listing\tvia=Hays\n';
-  const REBLAST = '3\t2026-02-10\t?\tData Engineer\tApplied\t4.3/5\t✅\t—\tre-blast, higher score\tvia=Hays\n';
+  const FIRST = '2\t2026-02-02\t?\tData Engineer\tApplied\t4.1/5\t✅\t[2](reports/002-tsv-fixture.md)\tblind listing\tvia=Hays\n';
+  const REBLAST = '3\t2026-02-10\t?\tData Engineer\tApplied\t4.3/5\t✅\t[3](reports/003-tsv-fixture.md)\tre-blast, higher score\tvia=Hays\n';
   const sb = makeSandbox(HEADER_9, { '2-first.tsv': FIRST });
   const res1 = runScript('merge-tracker.mjs', [], sb);
   writeFileSync(join(sb.additions, '3-reblast.tsv'), REBLAST);

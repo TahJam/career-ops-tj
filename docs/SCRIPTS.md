@@ -34,7 +34,7 @@ All scripts live in the project root as `.mjs` modules. Most are exposed via
 | `npm run find` | `find.mjs` | Resolve a report#/tracker#/company query to its full pipeline identity |
 | `npm run export-cv` | `export-cv.mjs` | Copy a report's tailored CV PDF to a fixed upload path (`cv.export_path` or `--out`) |
 | `npm run invite-match` | `invite-match.mjs` | Fuzzy-match a pasted interview-invite email against `data/applications.md` |
-| `npm run application:init` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle |
+| `npm run application:init -- --report N` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle (company and role read from report N's tracker row) |
 | `npm run paste-reply` | `paste-reply.mjs` | Manual/no-Gmail input into the `reply-watch.mjs` classification pipeline |
 | `npm run freshness` | `check-table-freshness.mjs` | Staleness validator for jurisdiction data tables (`as_of` / `next_effective` watchdog) |
 | `npm run openai:tailor` | `openai-tailor.mjs` | Tailor a CV via any OpenAI-compatible endpoint (headless companion to `openai-eval.mjs`) |
@@ -258,7 +258,7 @@ Folds compensation observations into per-application desired/advertised/actual v
 ```bash
 node salary-gap.mjs             # JSON
 node salary-gap.mjs --summary   # table + data-quality section
-node salary-gap.mjs --stated-for <tracker#>   # prior `stated` observations for one tracker#, JSON
+node salary-gap.mjs --stated-for <report#>    # prior `stated` observations for one application, JSON
 node salary-gap.mjs --self-test
 ```
 
@@ -303,10 +303,11 @@ Ledger line format (TSV, appended by `set-status.mjs`, `#`-prefixed lines are co
 
 ## assessment-log
 
-Logs "received a skills assessment" as a structured per-application event (eSkill, HackerRank, Criteria, Predictive Index, ...) instead of burying it in free-text notes. Each event records platform, subject tested, pass threshold vs score achieved (both optional — vendors often hide them), and a candidate-observed staleness note (e.g. "test content references Adobe Acrobat 9, a 2008-era version"; empty = no staleness observed). Events append to `data/assessments.tsv` (user layer, created on first `add`, never rewritten). Aggregates count events, pass/fail (only when both threshold and score are known), and stale-flagged events per platform; malformed lines are always reported, never dropped silently.
+Logs "received a skills assessment" as a structured per-application event (eSkill, HackerRank, Criteria, Predictive Index, ...) instead of burying it in free-text notes. Each event records platform, subject tested, pass threshold vs score achieved (both optional — vendors often hide them), and a candidate-observed staleness note (e.g. "test content references Adobe Acrobat 9, a 2008-era version"; empty = no staleness observed). Events append to `data/assessments.tsv` (user layer, created on first `add`, never rewritten). `--report N` ties the event to an application and reads the company from its tracker row; `--company` is only for an assessment with no application (passing both is an error). Aggregates count events, pass/fail (only when both threshold and score are known), and stale-flagged events per platform; malformed lines are always reported, never dropped silently.
 
 ```bash
-node assessment-log.mjs add --company Acme --report 042 --platform eSkill --subject "MS Office" --threshold 70 --score 92 --stale "references Adobe Acrobat 9 (2008-era)"
+node assessment-log.mjs add --report 042 --platform eSkill --subject "MS Office" --threshold 70 --score 92 --stale "references Adobe Acrobat 9 (2008-era)"
+node assessment-log.mjs add --company Acme --platform eSkill --subject "Excel"   # no application behind it
 node assessment-log.mjs             # JSON
 node assessment-log.mjs --summary   # per-event + per-platform table
 node assessment-log.mjs --self-test
@@ -626,12 +627,14 @@ node tracker.mjs export --out repaired.md # write to a file (existing file backe
 
 ## find
 
-Resolves a report number, tracker number, or company/role fragment to its full pipeline identity: company, role, tracker#, report#, canonical status, PDF path (from `data/pdf-index.tsv`), and report path. "Apply to #13" is ambiguous — report numbers and tracker row numbers diverge — and answering it used to require opening three files; this does it in one read-only lookup.
+Resolves a report number or a company/role fragment to its full pipeline identity: company, role, tracker#, report#, canonical status, PDF path (from `data/pdf-index.tsv`), and report path, in one read-only lookup.
+
+It is also the one place a name turns into a report number. Every command that selects an application (`set-status.mjs`, `outcome.mjs`, `mark-pdf-ready.mjs`, `export-cv.mjs`, and the `cover` / `pdf` / `email` / `interview-prep` / `outcome` modes) takes only the report number and refuses names, pointing here instead: run `find.mjs "<company>"`, pick the row, use its number. `resolveReportNumber()`, exported from this file, is the shared resolver those writers use.
 
 Zero dependencies, strictly read-only. Numeric queries match **both** the tracker # column and the report number from the Report link (`012` and `12` are the same number), so collisions between the two numbering schemes surface as multiple rows instead of a silent wrong pick. Text queries match company/role by case-insensitive substring, with the shared fuzzy matcher (`role-matcher.mjs`) as fallback for multi-word phrases.
 
 ```bash
-node find.mjs 13                # report# OR tracker# 13 — shows both if they differ
+node find.mjs 13                # report 13 (the tracker # is the same number; verify-pipeline Check 14)
 node find.mjs acme              # company fragment
 node find.mjs "data engineer"   # role phrase (fuzzy via role-matcher)
 node find.mjs acme --json       # machine-readable output
@@ -838,14 +841,15 @@ These have no `npm run` binding — modes and agents call them with
 
 | Invocation | Purpose |
 |------------|---------|
-| `node set-status.mjs <report#\|company> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
+| `node set-status.mjs <report#> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
+| `node mark-pdf-ready.mjs <report#> [--pdf <path>]` | Canonical write path for the tracker PDF cell (❌→✅). `--pdf` also records a PDF no generator wrote — e.g. a Canva export — as the report's PDF in `data/pdf-index.tsv` |
 | `node followup-cadence.mjs [--summary]` | Follow-up cadence per active application; flags overdue entries |
 | `node followup-seed.mjs [--backfill]` | Seed `data/follow-ups.md` with a pinned first follow-up date when a row turns Applied |
 | `node reply-watch.mjs` | Classify employer replies from `data/reply-candidates.json`, match to tracker rows, print a review digest |
 | `node process-quality.mjs [--summary]` | Aggregate `[process-friction]` tags from `data/active-interviews.md` per company |
 | `node reserve-report-num.mjs [--count N]` | Atomically reserve report numbers for parallel workers (fixes the #749 race) |
 | `node agent-inbox.mjs add "..."` | Append a request to the queue the agent drains at the next session start |
-| `node generate-latex.mjs <input.tex> [output.pdf]` | Validate and compile a generated `.tex` CV via tectonic or pdflatex |
+| `node generate-latex.mjs <input.tex> [output.pdf] [--report=NNN]` | Validate and compile a generated `.tex` CV via tectonic or pdflatex; `--report` records the PDF in `data/pdf-index.tsv` |
 | `node classify-tier.mjs` | Classify a job title into intern / entry / mid / senior |
 | `node plugins.mjs list\|run <id> [hook]` | CLI host for non-provider plugin hooks (see [PLUGINS.md](PLUGINS.md)) |
 | `node plugin-install.mjs` | Clone/scaffold/validate community plugins (allowlisted URLs, pinned SHA) |
@@ -859,25 +863,18 @@ These have no `npm run` binding — modes and agents call them with
 Canonical tracker write path: strict `states.yml` validation, shared lock, atomic write. Modes and agents call this instead of hand-editing `applications.md`.
 
 ```bash
-node set-status.mjs <report#|company> <state> [--note "..."] [--force] [--dry-run]
-node set-status.mjs --row N <state> [--note "..."]          # explicit tracker row ID
-node set-status.mjs --report N <state> [--note "..."]       # row whose Report cell links report #N
-node set-status.mjs --row 12 Applied
-node set-status.mjs --report 345 Applied
+node set-status.mjs <report#> <state> [--note "..."] [--on YYYY-MM-DD] [--dry-run] [--json]
+node set-status.mjs 345 Applied
+node set-status.mjs 345 Interview --note "phone screen booked" --on 2026-10-08
 ```
 
-A bare number is ambiguous once tracker row IDs and report IDs diverge, so an explicit selector disambiguates which number space you mean:
-
-- `--row N` selects the row whose `#` cell is `N`.
-- `--report N` selects the row whose `Report` cell links report `N`.
-
-`--row` and `--report` are mutually exclusive. Because an explicit selector answers the report-mismatch guard rather than overriding it, `--row` bypasses that guard without needing `--force` (which silences the check while the ambiguity is still real).
+The selector is the report number: the `NNN` in `reports/NNN-{company-slug}-{date}.md`, resolved through each row's Report link. `verify-pipeline.mjs` keeps every row's `#` equal to its report number, so there is one number space. Company names are refused rather than matched — one company can have many rows. Look the number up first with `node find.mjs "<company>"`.
 
 Exit codes:
 
-- `1` for an invalid or conflicting selector, or a non-canonical state.
-- `2` when the selector matches no tracker row.
-- `3` when a bare numeric selector triggers the report-number mismatch guard (`report-number-mismatch`).
+- `1` for a usage error (including a company name as the selector) or a non-canonical state.
+- `2` when no tracker row links that report number.
+- `3` when two rows link the same report (a tracker data bug `verify-pipeline.mjs` flags).
 
 ---
 

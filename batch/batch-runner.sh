@@ -757,7 +757,11 @@ process_offer() {
 merge_tracker() {
   echo ""
   echo "=== Merging tracker additions ==="
-  node "$PROJECT_DIR/merge-tracker.mjs"
+  # merge-tracker exits 1 when it refuses a row whose number breaks the
+  # report-number rule; the rest merge and the refused TSVs stay pending.
+  # Under `set -e` an unguarded call would abort reconcile, verify, and the
+  # summary for every other row, so report it and carry on like the steps below.
+  node "$PROJECT_DIR/merge-tracker.mjs" || echo "⚠️  merge-tracker refused some rows — they are left in batch/tracker-additions/ (see above)"
   echo ""
   echo "=== Reconciling pipeline.md ==="
   node "$PROJECT_DIR/reconcile-pipeline.mjs" || echo "⚠️  Pipeline reconcile had issues (see above)"

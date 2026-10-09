@@ -13,14 +13,14 @@ Requires transcripts produced by `modes/interview/debrief.md` or `modes/intervie
 ## Inputs
 
 - `interview-prep/sessions/` — Session transcripts (debrief + practice outputs). One file per round.
-- `interview-prep/{company}-{role}.md` — Company intel file (for context + output target).
+- `interview-prep/{NNN}-{company}-{role}.md` — Per-application intel files for this company (`{NNN}` = report number; context only — this mode's output goes to the company-level file in Step 5).
 - `config/profile.yml` — User profile (for role/archetype context, and for the candidate's location → jurisdiction derivation used by Step 2c).
 - `templates/protected-grounds.yml` — Jurisdiction-keyed table of protected grounds / do-not-ask topics in hiring (for Step 2c only). A data reference, not instruction logic — adding a jurisdiction row there never requires touching this mode. Reading it is a local file lookup; nothing leaves the machine.
 - **Original JD text (user-provided, for Step 2b only)** — the posted job description for the role under analysis. Same "user-provided input, not automated scraping" pattern used elsewhere in this codebase (e.g. `jd-skill-gap.mjs`): paste it, or point at `local:jds/{file}` if it's already saved under `jds/`. Without it, Step 2b is skipped — every other step runs as normal.
 
-Expected transcript filename convention (from #956):
+Expected transcript filename convention (from #956; the leading report number is present when the session belongs to a tracked application):
 ```
-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md
+[{NNN}-]{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md
 ```
 
 ## Minimum Threshold
@@ -34,26 +34,29 @@ Exit gracefully.
 
 ## Step 1 — Discover Sessions
 
-List all `.md` files in `interview-prep/sessions/`. Parse each filename using the `YYYY-MM-DD` date segment as the anchor:
+List all `.md` files in `interview-prep/sessions/`. Read each file's front matter first: `company`, `role`, `round`, `date`, and `report` (the report number, when the session belongs to a tracked application — see `interview-prep/sessions/README.md`). The front matter is authoritative.
+
+Only for an older file without front matter, parse the filename using the `YYYY-MM-DD` date segment as the anchor:
 
 ```
-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md
-         ↑            ↑        ↑          ↑
- everything     segment    round      date anchor
- before round   immediately label      (trailing)
-                before round
+[{NNN}-]{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md
+   ↑            ↑            ↑        ↑          ↑
+ report   everything     segment    round      date anchor
+ number   before round   immediately label      (trailing)
+ (opt.)                  before round
 ```
 
 - `YYYY-MM-DD` is the anchor — find the date, work left from it.
 - `round` = segment immediately before the date anchor.
-- `company+role` = everything before `round`.
+- A leading all-digit segment is the report number; strip it first.
+- `company+role` = everything else before `round`.
 
-Example: `acme-corp-swe-hr-2024-01-15.md` → company=`acme-corp`, role=`swe`, round=`hr`, date=`2024-01-15`.
+Example: `245-acme-corp-swe-hr-2024-01-15.md` → report=`245`, company=`acme-corp`, role=`swe`, round=`hr`, date=`2024-01-15`.
 
 Group files by `{company-slug}`. For each company group, note:
 - Number of rounds on file
 - Date range of sessions
-- Role slugs covered (a company may have sessions across multiple roles)
+- Applications covered — report numbers, or role slugs for sessions without one (a company may have sessions across multiple roles)
 
 ## Step 2 — Classify Interviewer Signals Per Session
 
@@ -78,7 +81,7 @@ This is a **separate, fifth dimension** — distinct from the four interviewer-b
 
 Check, per session:
 
-0. **Role match (gate, run first)** — confirm the session's role slug (from the filename pattern in Step 1) matches the role the supplied JD is for. The mode can analyze multiple role slugs for one company, but the supplied JD is for a single role — a session for a different role must never be compared against it. If the match can't be confirmed explicitly (ambiguous slug, JD role unclear, or the user hasn't stated which role the JD is for), **skip this session for Step 2b entirely** — do not run conditions 1–2 below on it, and do not guess.
+0. **Role match (gate, run first)** — confirm the session belongs to the role the supplied JD is for. When the session has a `report` number, compare it with the report the JD came from (or ask the user which report the JD is for); that match is exact. Only for a session without one, fall back to comparing its role slug (from Step 1). The mode can analyze multiple role slugs for one company, but the supplied JD is for a single role — a session for a different role must never be compared against it. If the match can't be confirmed explicitly (ambiguous slug, JD role unclear, or the user hasn't stated which role the JD is for), **skip this session for Step 2b entirely** — do not run conditions 1–2 below on it, and do not guess.
 
 1. **Off-JD topic** — did the interviewer ask about a specific skill, tool, or scope of responsibility that has **zero textual grounding anywhere in the JD** (not a rephrasing, not an adjacent/implied skill — genuinely absent from the posted text)? Quote the JD and the transcript question side by side to confirm before flagging; do not infer an absence you haven't checked.
 2. **Entry-level/junior framing** — does the JD title or body label the role entry-level, junior, associate, coordinator-tier, or similar, **and** is there an **explicit** benchmark establishing the posted pay band as low-end for that title/market — either the JD itself states a specific pay figure alongside the entry-level/junior/associate/coordinator-tier label, or the user's own notes explicitly classify it as below market for that title (e.g. "this is below market for a coordinator role")? **Never estimate or infer market compensation yourself.** If no such explicit benchmark or classification is present in the JD text or the user's notes, treat this condition as unmet — do not flag the mismatch on the basis of an inferred or assumed market rate.
@@ -268,4 +271,4 @@ Company          Rounds   Level
 - **Not a Glassdoor replacement** — analyses this candidate's live experience in this process, not crowd-sourced opinion.
 - **Candidate-side analysis is out of scope** — use `realign-targeting` (#960) for that.
 - **Protected-grounds detection (Step 2c) is not legal advice** — a private post-interview awareness aid. It never drafts complaints, never asserts violations, never contacts anyone, and never infers interviewer sentiment or intent — topic match + verbatim quote + legal context from `templates/protected-grounds.yml` only. Transcript analysis only, consistent with this mode's existing design — no live-interview interruption. Jurisdictions without a table row are skipped, never guessed.
-- **Scope/Compensation Mismatch (Step 2b) is descriptive, not actionable-in-the-moment** — by the time it's detected, the interview that produced it is already over, so it can't protect the candidate in that specific round. It's written to the company-level file as a record: if a later round with the same company happens, or the candidate considers re-applying, this is the place to check first. It is not fed automatically into `interview-prep/{company}-{role}.md` or any future prep step — the candidate re-reads it manually, the same way every other output of this mode is advisory-only.
+- **Scope/Compensation Mismatch (Step 2b) is descriptive, not actionable-in-the-moment** — by the time it's detected, the interview that produced it is already over, so it can't protect the candidate in that specific round. It's written to the company-level file as a record: if a later round with the same company happens, or the candidate considers re-applying, this is the place to check first. It is not fed automatically into `interview-prep/{NNN}-{company}-{role}.md` or any future prep step — the candidate re-reads it manually, the same way every other output of this mode is advisory-only.

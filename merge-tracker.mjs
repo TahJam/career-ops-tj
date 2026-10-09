@@ -21,7 +21,7 @@ import { execFileSync } from 'child_process';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
 import { roleExactMatch } from './role-matcher.mjs';
 import { parsePdfIndex } from './find.mjs';
-import { LEGACY_COLMAP, detectColumns, resolveScoreStatus, normalizeVia, SEPARATOR_ROW_RE } from './tracker-parse.mjs';
+import { LEGACY_COLMAP, detectColumns, resolveScoreStatus, normalizeVia, SEPARATOR_ROW_RE, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { resolveTrackerPath, trackerLockDirFor, acquireTrackerLock, writeFileAtomic, normalizeCompany, cell } from './tracker-utils.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
@@ -593,6 +593,9 @@ console.log(`📊 Existing: ${existingApps.length} entries, max #${maxNum}`);
 let added = 0;
 let updated = 0;
 let skipped = 0;
+// TSVs refused for breaking the one-number-space rule stay in tracker-additions/
+// (not moved to merged/) so verify-pipeline keeps flagging them as pending.
+const refusedFiles = new Set();
 const pdfIndex = loadPdfIndex();
 const pdfSynced = syncPdfFlags(existingApps, appLines, pdfIndex);
 updated += pdfSynced;
@@ -748,14 +751,24 @@ for (const file of tsvFiles) {
       const lineIdx = appLines.indexOf(duplicate.raw);
       if (lineIdx >= 0) {
         const pdf = reportNum && pdfIndex.has(String(reportNum)) ? '✅' : duplicate.pdf;
+        // The row keeps its own report link: its # is that report's number
+        // (verify-pipeline Check 14), and status-log / follow-up entries are
+        // keyed on it. A re-evaluation under a NEW report number is linked
+        // from the note instead, so the newer report stays one click away
+        // without making "application N" mean two numbers.
+        const newReport = extractTrackerReportNumbers(addition.report)[0];
+        const sameReport = extractTrackerReportNumbers(duplicate.report).includes(newReport);
+        const reEval = sameReport
+          ? `Re-eval ${addition.date} (${oldScore}→${newScore}).`
+          : `Re-eval ${addition.date} (${oldScore}→${newScore}): ${addition.report}.`;
         const updatedLine = buildRow({
           num: duplicate.num, date: addition.date, company: addition.company,
           role: reportNumMatched ? addition.role : duplicate.role,
           via: addition.via || duplicate.via || '—',
           location: addition.location || duplicate.location || '—',
           score: addition.score, status: duplicate.status, pdf,
-          report: addition.report,
-          notes: `Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes}`,
+          report: duplicate.report,
+          notes: `${reEval} ${addition.notes}`,
         });
         appLines[lineIdx] = updatedLine;
         updated++;
@@ -767,20 +780,24 @@ for (const file of tsvFiles) {
   } else {
     // New entry - preserve the TSV's reserved ID whenever it is actually
     // free. Parallel workers can finish out of order, so a valid reservation
-    // may be lower than the current tracker maximum (#1733). Renumber only on
-    // a real collision, using the next free ID above the current maximum and
-    // warning loudly so report/tracker drift is visible (#1704).
-    let entryNum;
-    if (!usedNumbers.has(addition.num)) {
-      entryNum = addition.num;
-    } else {
-      entryNum = maxNum + 1;
-      while (usedNumbers.has(entryNum)) entryNum++;
-      console.warn(
-        `⚠️  Tracker #${addition.num} already used; assigning #${entryNum} to ` +
-        `${addition.company} — ${addition.role}. Report link remains ${addition.report}.`,
-      );
+    // may be lower than the current tracker maximum (#1733).
+    // One number space (plans/10-07-26_report-number-as-id.md): a row's # IS
+    // its report number, so a new row must link exactly one report whose
+    // number equals the TSV's num, and that number must be free. The old
+    // fallback renumbered a collision to max+1 while keeping the report link,
+    // which is exactly the drift that rule forbids, so refuse instead.
+    const linked = extractTrackerReportNumbers(addition.report);
+    let refusal = null;
+    if (linked.length !== 1) refusal = `must link exactly one report (found ${linked.length})`;
+    else if (linked[0] !== addition.num) refusal = `num ${addition.num} does not match its report number ${linked[0]}`;
+    else if (usedNumbers.has(addition.num)) refusal = `#${addition.num} is already used by another tracker row`;
+    if (refusal) {
+      console.error(`❌ Refusing ${file} (${addition.company} — ${addition.role}): ${refusal}. Left in tracker-additions/.`);
+      refusedFiles.add(file);
+      skipped++;
+      continue;
     }
+    const entryNum = addition.num;
     usedNumbers.add(entryNum);
     if (entryNum > maxNum) maxNum = entryNum;
 
@@ -821,13 +838,18 @@ if (!DRY_RUN) {
 
   // Move processed files to merged/
   if (!existsSync(MERGED_DIR)) mkdirSync(MERGED_DIR, { recursive: true });
-  for (const file of tsvFiles) {
+  const movable = tsvFiles.filter(file => !refusedFiles.has(file));
+  for (const file of movable) {
     renameSync(join(ADDITIONS_DIR, file), join(MERGED_DIR, file));
   }
-  console.log(`\n✅ Moved ${tsvFiles.length} TSVs to merged/`);
+  console.log(`\n✅ Moved ${movable.length} TSVs to merged/`);
 }
 
 console.log(`\n📊 Summary: +${added} added, 🔄${updated} updated, ⏭️${skipped} skipped`);
+if (refusedFiles.size > 0) {
+  console.error(`❌ ${refusedFiles.size} TSV(s) refused — fix the number or report link and re-run.`);
+  process.exitCode = 1;
+}
 if (DRY_RUN) console.log('(dry-run — no changes written)');
 trackerLock.release();
 
