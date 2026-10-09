@@ -12221,7 +12221,8 @@ try {
   }
 
   if (
-    prepFlat.includes('If a report DOES exist, ignore the URL fetch and use the report — the report stays authoritative') &&
+    prepFlat.includes('ignore the URL fetch, the report stays authoritative') &&
+    prepFlat.includes('node find.mjs') &&
     prepFlat.includes('a bare URL routes to `auto-pipeline`, not here')
   ) {
     pass('interview-prep URL entry: report stays authoritative, bare URL still routes to auto-pipeline');
@@ -12632,7 +12633,7 @@ try {
   }
 
   if (
-    planFlat.includes('interview-prep/{company-slug}-{role-slug}.md') &&
+    planFlat.includes('interview-prep/{NNN}-{company-slug}-{role-slug}.md') &&
     planFlat.includes('never re-search work that\'s already been done and cited')
   ) {
     pass('interview/plan reuses an existing interview-prep file instead of re-searching');

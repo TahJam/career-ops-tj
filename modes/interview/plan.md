@@ -6,6 +6,8 @@ Given a job description and interview date/time, build a structured, time-blocke
 
 ## Inputs
 
+**Which application:** when the interview is for a tracked application, take its report number `{NNN}` and read `reports/{NNN}-*.md` and `interview-prep/{NNN}-*.md` from it. If the user names a company instead, run `node find.mjs "<company>"`, show the matches, and wait for the number (AGENTS.md → Selecting an Application). With a report, the JD comes from it.
+
 1. **Job description** (required) — paste inline or provide URL
 2. **Interview date and time** (required) — to calculate hours available
 3. **Interviewer name and role** (if known) — shapes depth and tone of prep. Later rounds (panel / onsite loop) often name several interviewers at once — from the user directly, a pasted calendar invite, or a pasted scheduling email. When more than one panelist is named, see the Panel Intel note in Step 2.
@@ -74,7 +76,7 @@ Before sizing the blocks, check `interview-prep/question-bank.md` (if it exists)
 
 **Research check — before drafting Block 4.** Block 4 maps stories to "likely question types," but don't let that default to pattern-guessing when real, reported questions are one check away:
 
-1. **Check for existing sourced research first.** If `interview-prep/{company-slug}-{role-slug}.md` already exists (a prior `interview-prep` run), read its Step 1/Step 3 sourced questions and reuse them directly — never re-search work that's already been done and cited.
+1. **Check for existing sourced research first.** If `interview-prep/{NNN}-{company-slug}-{role-slug}.md` already exists (a prior `interview-prep` run), read its Step 1/Step 3 sourced questions and reuse them directly — never re-search work that's already been done and cited.
 2. **If no prior research file exists, run `interview-prep.md`'s "Step 1 — Research" WebSearch queries directly**, scoped to the audience of this specific round (recruiter/HR, hiring manager, or peer/technical panel — see Step 2 above) rather than the full company-research pass.
 3. **Same tagging discipline as `interview-prep.md`:** sourced questions cite their source; anything not found falls back to `[inferred from JD]` — don't invent a third label or a different citation format (see `interview-prep.md`'s "Tag conventions").
 4. **If the search genuinely yields nothing** (obscure company, no public interview reports), say so explicitly in the plan output and proceed with JD/profile-pattern inference — the same partial-but-honest principle `interview-prep.md` already applies to sparse intel, not perfect-or-nothing.
@@ -151,7 +153,7 @@ At the end of the plan, produce a one-page quick-reference the candidate can ski
 
 ## Step 5 — Save Output
 
-Save the plan to `interview-prep/{company-slug}-{role-slug}.md` if a file doesn't exist, or append a `## Prep Plan` section if it does.
+Save the plan to `interview-prep/{NNN}-{company-slug}-{role-slug}.md` (no `{NNN}-` prefix for a role that was never evaluated) if a file doesn't exist, or append a `## Prep Plan` section if it does.
 
 ---
 
@@ -163,5 +165,5 @@ Save the plan to `interview-prep/{company-slug}-{role-slug}.md` if a file doesn'
 - **One topic per block.** Mixing topics in a single block reduces retention.
 - **Always include rest time.** A rested candidate outperforms a cramming one.
 - **Never generate fake company intel.** If you don't have research, say so — don't invent culture claims or technical details about the company.
-- **Check for real reported questions before Block 4.** Reuse `interview-prep/{company-slug}-{role-slug}.md` if it exists; otherwise run `interview-prep.md`'s Step 1 queries scoped to this round. Same tagging discipline as `interview-prep.md` — sourced-with-citation, or `[inferred from JD]` when nothing real turns up. This is the proactive counterpart to "Never generate fake company intel" above: check for the real thing before falling back to inference.
+- **Check for real reported questions before Block 4.** Reuse `interview-prep/{NNN}-{company-slug}-{role-slug}.md` if it exists; otherwise run `interview-prep.md`'s Step 1 queries scoped to this round. Same tagging discipline as `interview-prep.md` — sourced-with-citation, or `[inferred from JD]` when nothing real turns up. This is the proactive counterpart to "Never generate fake company intel" above: check for the real thing before falling back to inference.
 - **Never invent claims for the candidate.** The anchor sentence and pre-interview talking points in the quick-reference (Step 4) must be grounded in what the candidate actually has — `cv.md`, `article-digest.md`, or the story bank. Don't draft claims that depend on experience or metrics the candidate doesn't have. If a claim appears in `interview-prep/retracted-claims.md`, never include it.

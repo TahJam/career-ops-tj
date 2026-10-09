@@ -6,6 +6,8 @@ Run a realistic practice interview — one question at a time — and give struc
 
 ## Inputs
 
+**Which application:** when the interview is for a tracked application, take its report number `{NNN}` and read `reports/{NNN}-*.md` and `interview-prep/{NNN}-*.md` from it. If the user names a company instead, run `node find.mjs "<company>"`, show the matches, and wait for the number (AGENTS.md → Selecting an Application). A practice session with no application behind it needs no number.
+
 1. **Round type** (required) — screening/recruiter, screening/HM, technical/domain-specific, design/case study, behavioral
 2. **Interviewer persona** (if known) — name, role, company; shapes question style and depth
 3. **Question list** (optional) — specific questions to cover; if not provided, generate from round type
@@ -25,7 +27,7 @@ Run a realistic practice interview — one question at a time — and give struc
 Before setting the scene, confirm which files exist:
 
 - `interview-prep/question-bank.md` (or a company-specific equivalent)
-- The role-specific prep file (`interview-prep/{company}-{role}.md`)
+- The role-specific prep file (`interview-prep/{NNN}-*.md`)
 - `cv.md`
 - `interview-prep/retracted-claims.md`
 
@@ -133,7 +135,7 @@ Keep feedback tight. One or two things to sharpen per answer — not a full rewr
 
 ### Write Session Transcript
 
-After the summary, write a machine-readable session transcript to `interview-prep/sessions/{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md` (use `practice` for the company/role slug if this wasn't a company-specific session). This is a structured record of the round for downstream analysis modes; the speaker-labelled turns let a consumer read either side without re-inferring who spoke. The full contract lives in `interview-prep/sessions/README.md`.
+After the summary, write a machine-readable session transcript to `interview-prep/sessions/{NNN}-{company-slug}-{role-slug}-{round}-{YYYY-MM-DD}.md` with `report: {NNN}` in its front matter (use `practice` for the company/role slug, and omit `{NNN}-` and `report:`, if this wasn't a session for a tracked application). This is a structured record of the round for downstream analysis modes; the speaker-labelled turns let a consumer read either side without re-inferring who spoke. The full contract lives in `interview-prep/sessions/README.md`.
 
 Format:
 

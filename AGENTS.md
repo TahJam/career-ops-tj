@@ -22,7 +22,7 @@ User-facing content (CV, cover letters, application emails, form answers, recrui
 - `cv.md` · `article-digest.md` · `config/profile.yml` · `modes/_profile.md` · `writing-samples/`
 - `modes/_custom.md` (procedural/style rules only — never introduces factual claims)
 - `voice-dna.md` (voice/style only — never introduces factual claims)
-- `interview-prep/story-bank.md` and `interview-prep/{company}-{role}.md` (the user's own STAR stories and prep notes — same trust level as `cv.md`; consumed by `interview` and `apply`/`match-star`)
+- `interview-prep/story-bank.md` and `interview-prep/{NNN}-{company}-{role}.md` (the user's own STAR stories and prep notes — same trust level as `cv.md`; consumed by `interview` and `apply`/`match-star`)
 
 Everything else is **out of scope for content generation**: auto-memory (see below), any directory outside the career-ops project (parent/sibling repos, other codebases on the machine), knowledge from other Claude Code projects on the same machine, and cross-session inferences not written into an in-scope file.
 
@@ -83,7 +83,7 @@ AI-powered job search automation built on Claude Code: pipeline tracking, offer 
 | `templates/cv-template.tex` | LaTeX/Overleaf template for CVs |
 | `article-digest.md` | Compact proof points from portfolio (optional) |
 | `interview-prep/story-bank.md` | Accumulated STAR+R stories, built up via `interview-prep` runs (not at evaluation time) |
-| `interview-prep/{company}-{role}.md` | Company-specific interview intel reports |
+| `interview-prep/{NNN}-{company}-{role}.md` | Per-application interview intel reports (`{NNN}` = report number) |
 | `generate-pdf.mjs` | Playwright: HTML to PDF |
 | `export-cv.mjs` | Copies a report's tailored CV PDF (from `data/pdf-index.tsv`) to a fixed upload path — `cv.export_path` in `config/profile.yml`, or `npm run export-cv <report#> -- --out=<path>`; never modifies the source |
 | `generate-latex.mjs` | LaTeX CV validator + pdflatex compiler |

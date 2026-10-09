@@ -171,7 +171,7 @@ Never invent answers for legal, demographic, work-authorization, visa/sponsorshi
 
 For each question, generate the response following:
 
-1. **Report context**: Use proof points from block B. For STAR stories, check `interview-prep/{company-slug}-{role-slug}.md` first, then `interview-prep/story-bank.md` — if neither exists yet, note "no prepared story yet — run `interview-prep`" instead of inventing one
+1. **Report context**: Use proof points from block B. For STAR stories, check `interview-prep/{NNN}-*.md` (this report's prep file) first, then `interview-prep/story-bank.md` — if neither exists yet, note "no prepared story yet — run `interview-prep`" instead of inventing one
 2. **Previous Section H / Application Answers**: If a draft or final response exists, use it as a base and refine
 3. **"I'm choosing you" tone**: Same auto-pipeline framework
 4. **Specificity**: Reference something specific from the JD visible on screen
