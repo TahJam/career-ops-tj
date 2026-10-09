@@ -171,3 +171,77 @@ func TestKebabCase(t *testing.T) {
 		}
 	}
 }
+
+// A company with several applications: the company-slug fallback must hand
+// each application its own CV, never a sibling's
+// (plans/10-07-26_report-number-as-id.md).
+func TestResolveFallbackNarrowsByReportNumber(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "output")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"cv-vercel-183.pdf", "cv-vercel-183.html", // current form
+		"cv-taher-jamali-vercel-184-2026-09-11.pdf", "cv-taher-jamali-vercel-184.html", // dated pre-2026-10 form
+		"cv-vercel-183-latex.pdf",                                        // LaTeX variant of 183
+		"cv-candidate-vercel-2026-07-22.pdf", "cv-candidate-vercel.html", // legacy, no number
+	} {
+		if err := os.WriteFile(filepath.Join(out, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := func(report string) model.CareerApplication {
+		return model.CareerApplication{Company: "Vercel", ReportNumber: report}
+	}
+
+	got := ResolvePDFs(root, app("183"), PDFManifest{})
+	if len(got) != 2 || !contains(got, "output/cv-vercel-183.pdf") || !contains(got, "output/cv-vercel-183-latex.pdf") {
+		t.Errorf("report 183: want only its own two PDFs, got %v", got)
+	}
+	got = ResolvePDFs(root, app("184"), PDFManifest{})
+	if len(got) != 1 || got[0] != "output/cv-taher-jamali-vercel-184-2026-09-11.pdf" {
+		t.Errorf("report 184: want only its dated PDF, got %v", got)
+	}
+	// No file carries 999: numbered files belong to other reports, so only the
+	// legacy unnumbered CV remains a candidate.
+	got = ResolvePDFs(root, app("999"), PDFManifest{})
+	if len(got) != 1 || got[0] != "output/cv-candidate-vercel-2026-07-22.pdf" {
+		t.Errorf("report 999: want only the legacy CV, got %v", got)
+	}
+
+	if html, pdf := ResolveHTML(root, app("184")); html != "output/cv-taher-jamali-vercel-184.html" || pdf != "output/cv-taher-jamali-vercel-184.pdf" {
+		t.Errorf("ResolveHTML 184: got %q, %q", html, pdf)
+	}
+	if html, _ := ResolveHTML(root, app("999")); html != "output/cv-candidate-vercel.html" {
+		t.Errorf("ResolveHTML 999: want the legacy HTML, got %q", html)
+	}
+}
+
+func TestCVReportNumberIgnoresDateFragments(t *testing.T) {
+	cases := map[string]int{
+		"cv-acme-006.pdf":                         6,
+		"cv-acme-278-latex.pdf":                   278,
+		"cv-acme-278-canva.pdf":                   278,
+		"cv-taher-jamali-acme-278-2026-10-06.pdf": 278,
+	}
+	for name, want := range cases {
+		if n, ok := cvReportNumber(name); !ok || n != want {
+			t.Errorf("%s: want %d, got %d (ok=%v)", name, want, n, ok)
+		}
+	}
+	for _, name := range []string{"cv-acme-2026-10-06.pdf", "cv-candidate-acme.html", "cv-acme-06.pdf"} {
+		if n, ok := cvReportNumber(name); ok {
+			t.Errorf("%s: want no report number, got %d", name, n)
+		}
+	}
+}
+
+func contains(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}
