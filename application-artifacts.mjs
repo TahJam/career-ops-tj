@@ -6,12 +6,21 @@
  * Generated CVs are intentionally kept under output/ because they are user
  * artifacts. The directory key is stable for a report/company/role tuple so
  * the JD, source CV, tailored CV, PDF, and reuse decision stay together.
+ *
+ * The CLI takes only the report number and reads company and role from that
+ * report's tracker row, so a bundle can never be keyed on names that disagree
+ * with the application (plans/10-07-26_report-number-as-id.md).
  */
 
-import { mkdirSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { parseArgs } from 'util';
 import { fileURLToPath } from 'url';
+import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
+import { resolveTrackerPath } from './tracker-utils.mjs';
+import { resolveReportNumber } from './find.mjs';
+
+const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_OUTPUT_ROOT = resolve('output');
 const DECISIONS = new Set(['reuse', 'reuse-with-edits', 'regenerate']);
@@ -102,27 +111,40 @@ export function writeReuseDecision(paths, {
 }
 
 function usage() {
-  return 'Usage: node application-artifacts.mjs --report N --company NAME --role ROLE [--version N] [--root output] [--init]';
+  return 'Usage: node application-artifacts.mjs --report N [--version N] [--root output] [--init]';
+}
+
+/** Company and role of the tracker row that links report N. */
+function applicationForReport(report) {
+  if (!/^\d+$/.test(String(report))) {
+    throw new Error('reportNum must be a numeric report number');
+  }
+  const trackerPath = resolveTrackerPath(CAREER_OPS);
+  if (!existsSync(trackerPath)) throw new Error(`No tracker found at ${trackerPath}`);
+  const lines = readFileSync(trackerPath, 'utf-8').split('\n');
+  const colmap = resolveColumns(lines);
+  const resolved = resolveReportNumber(lines.map(l => parseTrackerRow(l, colmap)).filter(Boolean), report);
+  if (!resolved.row) throw new Error(resolved.message);
+  return { company: resolved.row.company, role: resolved.row.role };
 }
 
 async function main() {
   const { values } = parseArgs({
     options: {
       report: { type: 'string' },
-      company: { type: 'string' },
-      role: { type: 'string' },
       version: { type: 'string', default: '1' },
       root: { type: 'string' },
       init: { type: 'boolean' },
     },
     strict: true,
   });
-  if (!values.report || !values.company || !values.role) {
+  if (!values.report) {
     console.error(usage());
     process.exitCode = 1;
     return;
   }
-  const paths = applicationArtifactPaths({ reportNum: values.report, company: values.company, role: values.role, version: values.version, root: values.root });
+  const { company, role } = applicationForReport(values.report);
+  const paths = applicationArtifactPaths({ reportNum: values.report, company, role, version: values.version, root: values.root });
   if (values.init) ensureApplicationArtifactDirs(paths);
   console.log(JSON.stringify(paths, null, 2));
 }

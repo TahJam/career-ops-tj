@@ -34,7 +34,7 @@ All scripts live in the project root as `.mjs` modules. Most are exposed via
 | `npm run find` | `find.mjs` | Resolve a report#/tracker#/company query to its full pipeline identity |
 | `npm run export-cv` | `export-cv.mjs` | Copy a report's tailored CV PDF to a fixed upload path (`cv.export_path` or `--out`) |
 | `npm run invite-match` | `invite-match.mjs` | Fuzzy-match a pasted interview-invite email against `data/applications.md` |
-| `npm run application:init` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle |
+| `npm run application:init -- --report N` | `application-artifacts.mjs` | Initialize one versioned application-scoped JD/CV/PDF artifact bundle (company and role read from report N's tracker row) |
 | `npm run paste-reply` | `paste-reply.mjs` | Manual/no-Gmail input into the `reply-watch.mjs` classification pipeline |
 | `npm run freshness` | `check-table-freshness.mjs` | Staleness validator for jurisdiction data tables (`as_of` / `next_effective` watchdog) |
 | `npm run openai:tailor` | `openai-tailor.mjs` | Tailor a CV via any OpenAI-compatible endpoint (headless companion to `openai-eval.mjs`) |
