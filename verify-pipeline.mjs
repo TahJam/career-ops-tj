@@ -25,7 +25,7 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync 
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { looksLikeScoreCell, isSeparatorRow, isHeaderRow, resolveColumns, extractTrackerReportNumbers } from './tracker-parse.mjs';
-import { parseMachineSummary, checkJobLocation } from './lib/report-summary.mjs';
+import { parseMachineSummary, checkJobLocation, checkReferredBy } from './lib/report-summary.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
@@ -464,6 +464,21 @@ for (const e of entries) {
   }
 }
 if (numberSpaceErrors === 0) ok('Every row # equals its report number');
+
+// --- Check 15: referred_by (plans/10-19-26_referred-by-field.md) ---
+// The sheet's Referral column reads referred_by, so a value that is not a name
+// (a list, a boolean) or that carries contact details is an evaluator error.
+// A report without the key is fine: it predates the key, and the sheet falls
+// back to the tracker note. Unparseable fences were already reported above.
+let badReferredBy = 0;
+for (const [name, { summary }] of reportSummaries) {
+  const { state, reason } = checkReferredBy(summary);
+  if (state === 'invalid') {
+    error(`reports/${name}: ${reason}`);
+    badReferredBy++;
+  }
+}
+if (badReferredBy === 0) ok('referred_by valid wherever it is set');
 
 // --- Summary ---
 console.log('\n' + '='.repeat(50));

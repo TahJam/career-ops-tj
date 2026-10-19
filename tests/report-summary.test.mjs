@@ -8,6 +8,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   readMachineSummary, parseMachineSummary, yamlScalar, jobLocation, checkJobLocation, sheetLocation,
+  referredBy, checkReferredBy,
   MACHINE_SUMMARY_RE, US_STATES,
 } from '../lib/report-summary.mjs';
 import { pass, fail, ROOT } from './helpers.mjs';
@@ -93,4 +94,47 @@ console.log('\nreport-summary — validation messages');
   ok('a report with only one of the two keys is checked, not treated as missing',
     checkJobLocation({ work_mode: 'remote' }).state === 'ok'
     && checkJobLocation({ job_location: 'Austin, TX' }).state === 'invalid');
+}
+
+console.log('\nreport-summary — referred_by');
+{
+  const summary = (keys) => readMachineSummary(`## Machine Summary\n\n\`\`\`yaml\ncompany: "Acme"\n${keys}\`\`\`\n`);
+  ok('a named referrer is read', referredBy(summary('via: null\nreferred_by: "Khuzaima"\n')) === 'Khuzaima');
+  ok('null, a dash, or a missing key read as no referral',
+    referredBy(summary('referred_by: null\n')) === null
+    && referredBy(summary('referred_by: "—"\n')) === null
+    && referredBy(summary('via: null\n')) === null
+    && referredBy(null) === null);
+  ok('via is an agency, never a referral', referredBy(summary('via: "UMATR"\nreferred_by: null\n')) === null
+    && referredBy(summary('via: "UMATR"\n')) === null);
+  ok('a fence js-yaml rejects still yields referred_by', referredBy(summary('notes: a: b\nreferred_by: "Kai"\n')) === 'Kai');
+
+  ok('a name or relationship is valid', checkReferredBy({ referred_by: 'friend at Oura' }).state === 'ok'
+    && checkReferredBy({ referred_by: null }).state === 'ok');
+  ok('a report without the key is missing, not invalid', checkReferredBy({ via: null }).state === 'missing'
+    && checkReferredBy(null).state === 'missing');
+  ok('a non-string value is invalid', checkReferredBy({ referred_by: true }).state === 'invalid'
+    && checkReferredBy({ referred_by: ['Kai'] }).state === 'invalid');
+  ok('an email, URL or phone number is rejected as contact details',
+    ['kai@example.com', 'https://linkedin.com/in/kai', 'linkedin.com/in/kai', 'www.kai.dev',
+      'Kai (512) 555-0100', 'Kai 555-0100', 'Kai 5550100', 'Kai +44 20 7946 0958'].every(v =>
+      /contact details/.test(checkReferredBy({ referred_by: v }).reason ?? '')));
+  ok('an "@" meaning "at", a year range or a company domain is not contact details (PR #8 review [2])',
+    ['Kai @ Stripe', 'friend from 2019-2023 cohort', 'classmate 2019 2020', 'friend at Monday.com', 'Kai (team of 12)'].every(v =>
+      checkReferredBy({ referred_by: v }).state === 'ok'));
+
+  ok('placeholder words read as no referral (PR #8 review [1])',
+    ['None', 'none', 'N/A', 'NA', 'Unknown', '–'].every(v => referredBy(summary(`referred_by: "${v}"\n`)) === null)
+    && referredBy(summary('referred_by: no\n')) === null);
+  ok('placeholder words are invalid; a dash is not',
+    ['None', 'N/A', 'no', 'unknown'].every(v => /placeholder/.test(checkReferredBy({ referred_by: v }).reason ?? ''))
+    && checkReferredBy({ referred_by: '—' }).state === 'ok');
+  {
+    // A fence js-yaml rejects is read line by line, so a bare boolean comes back as a string.
+    const partial = summary('notes: a: b\nreferred_by: false\n');
+    ok('a recovered "false" is not a referrer, and is invalid (PR #8 review [3])',
+      parseMachineSummary(`## Machine Summary\n\n\`\`\`yaml\nnotes: a: b\nreferred_by: false\n\`\`\`\n`).status === 'partial'
+      && referredBy(partial) === null && checkReferredBy(partial).state === 'invalid'
+      && referredBy(summary('notes: a: b\nreferred_by: true\n')) === null);
+  }
 }

@@ -145,7 +145,7 @@ Row count grows 24 → 37; the grid is 1000 rows, so no dimension insert is need
 |---|---|---|---|---|---|---|---|
 | Sheet only (23) | sheet | sheet | sheet | sheet URL → `=HYPERLINK` | sheet | sheet | sheet |
 | Both (1) | sheet | **sheet** (apply date wins) | sheet | sheet | ~~sheet~~ **career-ops** when the report has one | sheet | **career-ops** |
-| Tracker only (13) | tracker | status-log → tracker | from report | report `**URL:**` | ~~profile~~ report | from `via:` | career-ops |
+| Tracker only (13) | tracker | status-log → tracker | from report | report `**URL:**` | ~~profile~~ report | ~~from `via:`~~ report `referred_by:` or tracker note | career-ops |
 
 > **Superseded 2026-10-01 (Location column):** career-ops now owns Location on overlap rows, the same way it
 > owns Response, and fills it from the report rather than the profile. See
@@ -167,7 +167,7 @@ After the value write, one `batchUpdate` extends `numberFormat` and `dataValidat
 | D Resume | `**PDF:**` in report / `data/pdf-index.tsv`, **basename minus `.pdf`** | e.g. `cv-taher-jamali-langchain-applied-ai` |
 | E Reference Link | report `**URL:**` → `=HYPERLINK("<url>","Link")` | |
 | F Location | ~~`config/profile.yml` → `profile.location` = `"Austin, TX"`~~ **Superseded 2026-10-01:** the report's Machine Summary `work_mode` / `job_location`, via `lib/report-summary.mjs` `sheetLocation()` | ~~it's the candidate's base, not the job's~~ It is the **job's** location: `Remote` for remote roles (counted by `COUNTIF(F:F,"Remote")`), else `"City, ST"` (counted by `COUNTIF(F:F,"* TX")`). The original reading stamped `Austin, TX` on remote roles. See [`10-01-26_fix-sheets-job-location.md`](10-01-26_fix-sheets-job-location.md) |
-| G Referral | `Yes` if report `via:` non-null or notes mention a referral, else `No` | |
+| G Referral | ~~`Yes` if report `via:` non-null or notes mention a referral, else `No`~~ **Superseded 2026-10-19:** `Yes` if the report's Machine Summary `referred_by` is set (`lib/report-summary.mjs` `referredBy()`) or the tracker note mentions a referral, else `No` | `via:` names an agency or recruiter (#1596), not a referral; reading it marked agency posting #293 as a referral. See [`10-19-26_referred-by-field.md`](10-19-26_referred-by-field.md) |
 | H Response | status map below | |
 
 **Status map** — constrained to the five dropdown values (H3):
@@ -374,6 +374,7 @@ Not blockers — things to expect and hand-correct once.
 
 - **Apply dates for the 13 backfill rows will mostly be evaluation dates.** `data/status-log.tsv` has only 4 entries; it started recording partway through this search. Reports 33, 34, 59, 62, 72, 82, 96, 106, 113, 114 will fall back to the tracker's evaluation date, which runs a few days later than the true apply date. Correct by hand in the sheet afterward — the reconciler treats the sheet as authoritative on Date, so corrections stick.
 - **`Referral` detection is heuristic.** `via:` is `null` on most reports; report #82 records "Applying via friend referral at Oura" in prose only. Expect a few manual fixes.
+  **Superseded 2026-10-19:** `via:` is no longer read for Referral; the report's `referred_by:` and the tracker note are ([`10-19-26_referred-by-field.md`](10-19-26_referred-by-field.md)).
 - **`Discarded` has no dropdown value** — specified as leave-and-warn. If a sixth value is wanted, add it in the sheet UI first.
 
 ---

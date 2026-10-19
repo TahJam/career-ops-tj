@@ -288,6 +288,7 @@ work_auth: "{sponsors | not_needed | unstated | no_sponsorship}"
 discard_reasons:
   - "{predicted reason if final_decision is Skip/Consider, e.g. salary_too_low, hybrid_required, tech_stack_mismatch, seniority_mismatch, geo_restriction, size_mismatch, company_culture, or other specific reason}"
 via: {agency/recruiter firm as a quoted string, or null for direct applications}
+referred_by: {who referred the candidate or how, as a quoted string (e.g. "Khuzaima", "friend at Oura"), or null}
 company_confidential: {true when the end employer is unknown (company is "?"), else false}
 advertised_comp: {verbatim JD salary/range as a quoted string (e.g. "80-90k EUR"), or null when the JD states nothing}
 work_mode: "{remote | remote_flex | hybrid | onsite}"
@@ -305,6 +306,7 @@ Rules:
 - `score` is numeric only, without `/5`.
 - `final_decision` must reflect the full evaluation, not only the CV match.
 - `advertised_comp` is the JD's **own** figure, verbatim; `null` when the JD states nothing — never estimate it and never substitute researched market data (Block D research stays in Block D). Batch workers never write `data/salary-observations.tsv` — the report itself is the advertised observation (`salary-gap.mjs` reads it).
+- `via` and `referred_by` are different things. `via` is an agency or recruiter firm between the candidate and the employer (#1596); it never means a referral. `referred_by` is a personal referral: a name or relationship only — never an email, phone number, URL, password, or other credential or contact detail. Set it only when the candidate states the referral in the conversation or it is already recorded in an in-scope file; never infer it from the JD ("employee referral program"), from `via`, or from recruiter outreach. Batch workers always write `null`. The sheet sync reads it through `lib/report-summary.mjs` for the Referral column.
 - `work_mode` and `job_location` are the machine-readable form of the Block A Remote row; the sheet sync, the dashboard and `verify-pipeline.mjs` read them through `lib/report-summary.mjs`, so they are the single source of truth for a job's location.
   - `work_mode`: `remote` = no attendance expectation; `remote_flex` = remote by default with occasional site visits or travel, or remote-first with an optional office; `hybrid` = recurring in-office days; `onsite` = full-time in office. When the Geo-mismatch check fires, the JD body's binding requirement wins.
   - `job_location` is normalized, not copied: US roles are `"City, ST"` with the two-letter state code ("Austin, Texas", "Austin on-site", "North Austin facility" → `"Austin, TX"`); roles outside the US are the city alone (`"Berlin"`). For a multi-location posting, use the listed location that matches the candidate's base in `config/profile.yml`, otherwise the first one listed.
@@ -364,6 +366,7 @@ work_auth: "{sponsors | not_needed | unstated | no_sponsorship}"
 discard_reasons:
   - "{predicted reason if final_decision is Skip/Consider, e.g. salary_too_low, hybrid_required, tech_stack_mismatch, seniority_mismatch, geo_restriction, size_mismatch, company_culture, or other specific reason}"
 via: {agency/recruiter firm as a quoted string, or null for direct applications}
+referred_by: {who referred the candidate or how, as a quoted string (e.g. "Khuzaima", "friend at Oura"), or null}
 company_confidential: {true when the end employer is unknown (company is "?"), else false}
 advertised_comp: {verbatim JD salary/range as a quoted string (e.g. "80-90k EUR"), or null when the JD states nothing}
 work_mode: "{remote | remote_flex | hybrid | onsite}"

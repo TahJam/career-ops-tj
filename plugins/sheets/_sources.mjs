@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parseMachineSummary, checkJobLocation, sheetLocation } from '../../lib/report-summary.mjs';
+import { parseMachineSummary, checkJobLocation, sheetLocation, referredBy } from '../../lib/report-summary.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -88,10 +88,13 @@ export function reportNumsFromCell(cell) {
 const reportCache = new Map();
 let reportListing = null;
 
+/** CAREER_OPS_REPORTS overrides the reports dir (tests), as in verify-pipeline.mjs. */
+const reportsDir = () => process.env.CAREER_OPS_REPORTS || path.join(ROOT, 'reports');
+
 /** Report filenames, listed once per process. */
 function listReports() {
   if (reportListing) return reportListing;
-  const dir = path.join(ROOT, 'reports');
+  const dir = reportsDir();
   try { reportListing = readdirSync(dir).filter(f => f.endsWith('.md')); }
   catch { reportListing = []; }
   return reportListing;
@@ -108,20 +111,23 @@ function listReports() {
  * existing sheet value alone, `locationReason` says why, so the sync log points
  * at the real problem.
  *
+ * `referredBy` is the Machine Summary `referred_by` key. The report's `via` is
+ * deliberately not read: it names an agency, which is not a referral.
+ *
  * @param {number} num
- * @returns {{ url: string|null, pdf: string|null, via: string|null, location: string|null, locationReason: string|null }}
+ * @returns {{ url: string|null, pdf: string|null, referredBy: string|null, location: string|null, locationReason: string|null }}
  */
 export function reportFacts(num) {
   const cached = reportCache.get(num);
   if (cached) return cached;
 
-  const facts = { url: null, pdf: null, via: null, location: null, locationReason: 'no report file' };
+  const facts = { url: null, pdf: null, referredBy: null, location: null, locationReason: 'no report file' };
   const padded = String(num).padStart(3, '0');
   const name = listReports().find(f => f.startsWith(`${padded}-`) || f.startsWith(`${num}-`));
 
   if (name) {
     let text = '';
-    try { text = readFileSync(path.join(ROOT, 'reports', name), 'utf8'); } catch { text = ''; }
+    try { text = readFileSync(path.join(reportsDir(), name), 'utf8'); } catch { text = ''; }
     // URL and PDF are header lines, not Machine Summary keys.
     const url = /^\*\*URL:\*\*\s*(\S+)\s*$/m.exec(text);
     const pdf = /^\*\*PDF:\*\*\s*(\S+)\s*$/m.exec(text);
@@ -129,8 +135,7 @@ export function reportFacts(num) {
     if (pdf) facts.pdf = path.basename(pdf[1]).replace(/\.pdf$/i, '');
 
     const { status, summary } = parseMachineSummary(text);
-    const via = typeof summary?.via === 'string' ? summary.via.trim() : '';
-    if (via && !['—', '-'].includes(via)) facts.via = via;
+    facts.referredBy = referredBy(summary);
     facts.location = sheetLocation(summary);
     facts.locationReason = facts.location ? null : locationReason(status, summary);
   }
@@ -145,6 +150,24 @@ export function locationReason(status, summary) {
   const { state, reason } = checkJobLocation(summary);
   if (state === 'missing') return 'the report has no work_mode / job_location';
   return reason ?? 'the report location is invalid';
+}
+
+/**
+ * Column G (Referral): the report's `referred_by`, or a referral mentioned in
+ * the tracker note.
+ *
+ * The note is kept as a second source, not a legacy fallback: referrals usually
+ * surface at apply time and are recorded with `set-status.mjs --note`, after the
+ * report was written with `referred_by: null`. A null key therefore does not
+ * veto the note. An agency (`via`) never counts.
+ *
+ * @param {{ notes?: string|null }} row  tracker row
+ * @param {{ referredBy: string|null }} facts  from reportFacts()
+ * @returns {boolean}
+ */
+export function isReferral(row, facts) {
+  if (facts?.referredBy) return true;
+  return /\breferr(al|ed)\b/i.test(String(row?.notes ?? ''));
 }
 
 /** Test seam: forget cached report lookups. */

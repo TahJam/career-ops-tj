@@ -1774,7 +1774,9 @@ const patternsMachineFields = readFile('analyze-patterns.mjs').match(/const MACH
 if (
   /^via:/m.test(batchMachineSummary) &&
   /^company_confidential:/m.test(batchMachineSummary) &&
+  /^referred_by:/m.test(batchMachineSummary) &&
   /['"]via['"]/.test(patternsMachineFields) &&
+  /['"]referred_by['"]/.test(patternsMachineFields) &&
   /['"]company_confidential['"]/.test(patternsMachineFields)
 ) {
   pass('batch Machine Summary fields are preserved by the downstream parser');
