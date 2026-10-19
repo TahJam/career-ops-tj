@@ -116,6 +116,25 @@ console.log('\nreport-summary — referred_by');
   ok('a non-string value is invalid', checkReferredBy({ referred_by: true }).state === 'invalid'
     && checkReferredBy({ referred_by: ['Kai'] }).state === 'invalid');
   ok('an email, URL or phone number is rejected as contact details',
-    ['kai@example.com', 'https://linkedin.com/in/kai', 'Kai (512) 555-0100'].every(v =>
+    ['kai@example.com', 'https://linkedin.com/in/kai', 'linkedin.com/in/kai', 'www.kai.dev',
+      'Kai (512) 555-0100', 'Kai 555-0100', 'Kai 5550100', 'Kai +44 20 7946 0958'].every(v =>
       /contact details/.test(checkReferredBy({ referred_by: v }).reason ?? '')));
+  ok('an "@" meaning "at", a year range or a company domain is not contact details (PR #8 review [2])',
+    ['Kai @ Stripe', 'friend from 2019-2023 cohort', 'classmate 2019 2020', 'friend at Monday.com', 'Kai (team of 12)'].every(v =>
+      checkReferredBy({ referred_by: v }).state === 'ok'));
+
+  ok('placeholder words read as no referral (PR #8 review [1])',
+    ['None', 'none', 'N/A', 'NA', 'Unknown', '–'].every(v => referredBy(summary(`referred_by: "${v}"\n`)) === null)
+    && referredBy(summary('referred_by: no\n')) === null);
+  ok('placeholder words are invalid; a dash is not',
+    ['None', 'N/A', 'no', 'unknown'].every(v => /placeholder/.test(checkReferredBy({ referred_by: v }).reason ?? ''))
+    && checkReferredBy({ referred_by: '—' }).state === 'ok');
+  {
+    // A fence js-yaml rejects is read line by line, so a bare boolean comes back as a string.
+    const partial = summary('notes: a: b\nreferred_by: false\n');
+    ok('a recovered "false" is not a referrer, and is invalid (PR #8 review [3])',
+      parseMachineSummary(`## Machine Summary\n\n\`\`\`yaml\nnotes: a: b\nreferred_by: false\n\`\`\`\n`).status === 'partial'
+      && referredBy(partial) === null && checkReferredBy(partial).state === 'invalid'
+      && referredBy(summary('notes: a: b\nreferred_by: true\n')) === null);
+  }
 }
