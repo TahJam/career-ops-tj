@@ -88,10 +88,13 @@ export function reportNumsFromCell(cell) {
 const reportCache = new Map();
 let reportListing = null;
 
+/** CAREER_OPS_REPORTS overrides the reports dir (tests), as in verify-pipeline.mjs. */
+const reportsDir = () => process.env.CAREER_OPS_REPORTS || path.join(ROOT, 'reports');
+
 /** Report filenames, listed once per process. */
 function listReports() {
   if (reportListing) return reportListing;
-  const dir = path.join(ROOT, 'reports');
+  const dir = reportsDir();
   try { reportListing = readdirSync(dir).filter(f => f.endsWith('.md')); }
   catch { reportListing = []; }
   return reportListing;
@@ -124,7 +127,7 @@ export function reportFacts(num) {
 
   if (name) {
     let text = '';
-    try { text = readFileSync(path.join(ROOT, 'reports', name), 'utf8'); } catch { text = ''; }
+    try { text = readFileSync(path.join(reportsDir(), name), 'utf8'); } catch { text = ''; }
     // URL and PDF are header lines, not Machine Summary keys.
     const url = /^\*\*URL:\*\*\s*(\S+)\s*$/m.exec(text);
     const pdf = /^\*\*PDF:\*\*\s*(\S+)\s*$/m.exec(text);
