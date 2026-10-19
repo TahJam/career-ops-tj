@@ -197,3 +197,16 @@ body, which is the right place for prose about a referral. Easy to add later if 
 - **Pre-existing test failure.** `tests/company-funded.test.mjs` ("structured fetch behavior wrong")
   fails on `main` too. Its RSS fixture hardcodes `pubDate` 15 Jul 2026 with a 3-month window, so it
   started failing on 2026-10-15. Left for a separate fix.
+
+## PR #8 review round (2026-10-19)
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Placeholder words (`None`, `N/A`, bare `no`, en dash) counted as a referrer | Fixed in `fc728e6`: read as null; words fail Check 15, dashes stay valid (D1) |
+| 2 | `CONTACT_RE` flagged "Kai @ Stripe" / "2019-2023"; missed `linkedin.com/in/kai` | Fixed in `fc728e6`: email / URL / domain-with-path / phone shapes; year ranges excluded |
+| 3 | A partly parsed fence turned `referred_by: false` into `"false"` | Fixed in `fc728e6`: `true` / `false` strings read as null and are invalid |
+| 4 | Note regex: "no referral" → Yes; "Referrals" / "referrer" → No | Deferred: by design (D3); regex unchanged from `main`, no current note hits it |
+| 5 | Tests bypassed `reportFacts()` | Fixed in `0c4fdaa`: `CAREER_OPS_REPORTS` seam in `_sources.mjs`; fixture tests through `reportFacts()` (mutation-checked) |
+
+After the round: `node test-all.mjs` 3015 passed / 1 failed (the pre-existing `company-funded` date fixture),
+`verify-pipeline.mjs` 0 errors, `npm run sheets:sync:dry` unchanged (117 existing, 0 added, 0 updates).
