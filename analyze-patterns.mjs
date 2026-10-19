@@ -47,6 +47,8 @@ const MACHINE_SUMMARY_FIELDS = new Set([
   'discard_reasons',
   'advertised_comp',
   'via',
+  // Personal referral; never the same thing as via (an agency).
+  'referred_by',
   'company_confidential',
   'risk_summary',
   // Work-authorization / visa-sponsorship tier from Block A (report + Machine
