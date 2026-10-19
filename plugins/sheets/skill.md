@@ -35,6 +35,17 @@ the next sync** — fix the source instead: the tracker status for H, the
 report's Machine Summary `work_mode` / `job_location` for F. A report with no
 valid location leaves F as it is, and the sync log says why.
 
+## Column G (Referral)
+
+A new row gets `Yes` when the report's Machine Summary has `referred_by` set,
+or the tracker note mentions a referral ("Referred by …", "referral"). A
+referral that comes up at apply time is usually recorded with
+`set-status.mjs <#> Applied --note "Referred by …"`, and that is enough.
+
+The report's `via` is **never** read here: it names an agency or recruiter in
+the middle, which is not a referral. G is sheet-owned on rows the sheet
+already has, so fix an existing row's G in the sheet itself.
+
 `data/sheets-sync-state.json` holds a cursor into `data/status-log.tsv`. It is
 bookkeeping for that ledger's other readers — it does **not** gate the sync, and
 deleting it changes nothing about what gets written.
