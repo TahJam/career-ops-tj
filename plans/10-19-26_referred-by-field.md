@@ -1,6 +1,9 @@
 # Add a structured `referred_by` field so the Sheets sync stops treating agency postings as referrals
 
-> **Status: in progress 2026-10-19** on `feat/referred-by` → one PR into `origin/main`.
+> **Status: implemented 2026-10-19** on `feat/referred-by` → one PR into `origin/main` (hashes in "Suggested
+> Commit Order"). `node test-all.mjs` 3008 passed / 1 failed. The one failure is pre-existing on `main`
+> and unrelated (see "Implementation notes"). `verify-pipeline.mjs` 0 errors after the backfill.
+> `npm run sheets:sync:dry`: 117 existing rows, 0 added, 0 updates. No real sheet write.
 
 ## Context
 
@@ -168,12 +171,29 @@ body, which is the right place for prose about a referral. Easy to add later if 
 
 | # | Commit | Step | Files |
 |---|---|---|---|
-| 0 | `docs(plans): plan a structured referred_by field for the sheets sync` | — | this plan |
-| 1 | `feat(batch-prompt): add referred_by to the Machine Summary` | 1 | `batch/batch-prompt.md`, `modes/oferta.md` |
-| 2 | `feat(lib): add referred_by helpers to the shared Machine Summary reader` | 2, 3 | `lib/report-summary.mjs`, `tests/report-summary.test.mjs`, `analyze-patterns.mjs`, `test-all.mjs` |
-| 3 | `feat(verify-pipeline): flag referred_by values that are not a name` | 4 | `verify-pipeline.mjs`, `tests/verify-pipeline-referred-by.test.mjs` |
-| 4 | `fix(sheets): stop marking agency postings as referrals` | 5 | `plugins/sheets/_sources.mjs`, `plugins/sheets/index.mjs`, `tests/sheets-referral.test.mjs` |
-| 5 | `docs(sheets): define column G from referred_by and tracker notes` | 6 | `plans/08-31-26_google-sheets-sync.md`, `plugins/sheets/skill.md` |
-| — | *(no commit)* backfill 10 reports | 7 | `reports/*.md` (gitignored) |
-| — | *(no commit)* `npm run sheets:sync:dry` → shown to the user | 8 | — |
+| 0 | `docs(plans): plan a structured referred_by field for the sheets sync` ✅ `3c93235` | — | this plan |
+| 1 | `feat(batch-prompt): add referred_by to the Machine Summary` ✅ `a21f22f` | 1 | `batch/batch-prompt.md`, `modes/oferta.md` |
+| 2 | `feat(lib): add referred_by helpers to the shared Machine Summary reader` ✅ `f95908f` | 2, 3 | `lib/report-summary.mjs`, `tests/report-summary.test.mjs`, `analyze-patterns.mjs`, `test-all.mjs` |
+| 3 | `feat(verify-pipeline): flag referred_by values that are not a name` ✅ `b6fcd74` | 4 | `verify-pipeline.mjs`, `tests/verify-pipeline-referred-by.test.mjs` |
+| 4 | `fix(sheets): stop marking agency postings as referrals` ✅ `38bc457` | 5 | `plugins/sheets/_sources.mjs`, `plugins/sheets/index.mjs`, `tests/sheets-referral.test.mjs` |
+| 5 | `docs(sheets): define column G from referred_by and tracker notes` ✅ `da976fc` | 6 | `plans/08-31-26_google-sheets-sync.md`, `plugins/sheets/skill.md` |
+| — | *(no commit)* backfill 10 reports ✅ | 7 | `reports/*.md` (gitignored) |
+| — | *(no commit)* `npm run sheets:sync:dry` → shown to the user ✅ | 8 | — |
 | 6 | `docs(plans): mark the referred_by plan complete` | — | this plan |
+
+## Implementation notes
+
+- **`reportFacts()` no longer returns `via`.** Its only consumer was `isReferral()`, so the field was
+  replaced by `referredBy` rather than kept as dead data that invites the same mistake again.
+- **`isReferral()` moved from `index.mjs` to `_sources.mjs`** and is exported. `index.mjs` has no
+  test seam, and the function belongs next to `reportFacts()`, which produces its input.
+- **Backfill** ran from a scratchpad script (backups of the 10 files kept there). Every report had exactly
+  one `via:` line in its fence; the key went directly after it. Re-audit: the eight referrals read Yes,
+  #226 and #293 read No.
+- **Dry run.** `npm run sheets:sync:dry`: `plan: 117 row(s) — 117 existing, 0 added, 0 row update(s)`.
+  The backfill changes nothing in the sheet because G is sheet-owned on existing rows. #293's G is still
+  `Yes` in the sheet, and the user is fixing it by hand. The dry run also logs `no location for #275`. That
+  is a pre-existing placeholder report with no `work_mode` / `job_location`, and it is unrelated to this change.
+- **Pre-existing test failure.** `tests/company-funded.test.mjs` ("structured fetch behavior wrong")
+  fails on `main` too. Its RSS fixture hardcodes `pubDate` 15 Jul 2026 with a 3-month window, so it
+  started failing on 2026-10-15. Left for a separate fix.
