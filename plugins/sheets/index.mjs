@@ -27,7 +27,7 @@ import { getAccessToken, SCOPE_WRITE } from './_auth.mjs';
 import {
   buildDesiredRows, planWrites, pendingFromJournal, currentSheetValues, planIsNoOp,
 } from './_reconcile.mjs';
-import { applyDates, resumeNames, reportFacts, reportNumsFromCell } from './_sources.mjs';
+import { applyDates, resumeNames, reportFacts, reportNumsFromCell, isReferral } from './_sources.mjs';
 import { loadState, saveState, writeBackup } from './_state.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -50,12 +50,6 @@ const DEFAULTS = {
 function tabYear(tab) {
   const m = /(\d{4})\s*$/.exec(String(tab));
   return m ? parseInt(m[1], 10) : null;
-}
-
-/** Referral evidence, from the report's `via:` or a mention in the tracker note. */
-function isReferral(row, facts) {
-  if (facts.via) return true;
-  return /\breferr(al|ed)\b/i.test(String(row.notes ?? ''));
 }
 
 export default {
