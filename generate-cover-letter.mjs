@@ -197,7 +197,8 @@ Usage:
   --payload   Path to the JSON payload file (required)
   --out       Override output path from payload (optional)
   --format    Override output PDF page format (letter|a4, default: a4)
-  --report    Link the PDF to a tracker report number in data/pdf-index.tsv
+  --report    Record the PDF as report NNN's cover letter in data/pdf-index.tsv
+              (the report's CV row is kept)
 `);
     process.exit(args.help ? 0 : 1);
   }
@@ -244,6 +245,8 @@ Usage:
       format: args.format || "a4",
       reportNum: args.report,
       inputPath: payloadPath,
+      // Its own pdf-index.tsv row, next to the report's CV row, never over it.
+      kind: "cover",
     });
     console.log(`\nCover letter PDF: ${payload.output_path}`);
   } catch (err) {
