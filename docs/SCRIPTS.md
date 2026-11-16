@@ -648,7 +648,7 @@ Multiple matches print as a table; zero matches print a clean message.
 
 ## export-cv
 
-Copies the tailored CV PDF that `data/pdf-index.tsv` records for a report to one fixed file name, ready to upload to an application form. The destination is `cv.export_path` in `config/profile.yml`, or a `--out` override. The source PDF in `output/` is never modified.
+Copies the tailored CV PDF that `data/pdf-index.tsv` records for a report (its `cv` row; a cover letter row is never exported) to one fixed file name, ready to upload to an application form. The destination is `cv.export_path` in `config/profile.yml`, or a `--out` override. The source PDF in `output/` is never modified.
 
 ```bash
 npm run export-cv 248                          # → cv.export_path from config/profile.yml
@@ -842,7 +842,7 @@ These have no `npm run` binding — modes and agents call them with
 | Invocation | Purpose |
 |------------|---------|
 | `node set-status.mjs <report#> <State> [--note]` | Canonical tracker write path: strict states.yml validation, shared lock, atomic write. Modes call this instead of hand-editing `applications.md` |
-| `node mark-pdf-ready.mjs <report#> [--pdf <path>]` | Canonical write path for the tracker PDF cell (❌→✅). `--pdf` also records a PDF no generator wrote — e.g. a Canva export — as the report's PDF in `data/pdf-index.tsv` |
+| `node mark-pdf-ready.mjs <report#> [--pdf <path>]` | Canonical write path for the tracker PDF cell (❌→✅). `--pdf` also records a PDF no generator wrote — e.g. a Canva export — as the report's CV in `data/pdf-index.tsv` |
 | `node followup-cadence.mjs [--summary]` | Follow-up cadence per active application; flags overdue entries |
 | `node followup-seed.mjs [--backfill]` | Seed `data/follow-ups.md` with a pinned first follow-up date when a row turns Applied |
 | `node reply-watch.mjs` | Classify employer replies from `data/reply-candidates.json`, match to tracker rows, print a review digest |

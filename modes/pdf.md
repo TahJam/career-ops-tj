@@ -309,7 +309,7 @@ d. Record it as the report's PDF, so `export-cv.mjs`, `find.mjs`, and the dashbo
    ```bash
    node mark-pdf-ready.mjs {NNN} --pdf output/cv-{company-slug}-{NNN}-canva.pdf
    ```
-   This replaces the report's previous PDF in `data/pdf-index.tsv`: the last CV generated for a report is the one exported. Skip it for a one-off with no report.
+   This replaces the report's previous CV in `data/pdf-index.tsv` (its cover letter row, if any, is kept): the last CV generated for a report is the one exported. Skip it for a one-off with no report.
 e. Report: PDF path, file size, Canva design URL (for manual tweaking)
 
 #### Error handling

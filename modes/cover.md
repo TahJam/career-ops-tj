@@ -325,8 +325,10 @@ Write payload to `/tmp/cover-payload-{company-slug}-{NNN}.json`. It is written h
 
 Run:
 ```bash
-node generate-cover-letter.mjs --payload /tmp/cover-payload-{company-slug}-{NNN}.json
+node generate-cover-letter.mjs --payload /tmp/cover-payload-{company-slug}-{NNN}.json --report {NNN}
 ```
+
+In report mode, `--report {NNN}` records the PDF as the report's cover letter in `data/pdf-index.tsv`, next to its CV row (it never replaces the CV). In paste mode with no report, drop `--report`.
 
 Report the output path and file size.
 

@@ -24,8 +24,10 @@ Supported inputs:
 1. `/career-ops email {report#}`
    - Load the matching `reports/{NNN}-*.md`.
    - Use the report header, score, archetype, PDF status, and evaluation content.
-   - If `data/pdf-index.tsv` contains a PDF for that report, mention it as the CV
-     attachment candidate. If no PDF is indexed, say that the CV should be
+   - If `data/pdf-index.tsv` has a `cv` row for that report (last column
+     `kind`; a row without it is a CV unless its file ends in `-cover.pdf`),
+     mention that PDF as the CV attachment candidate. A `cover` row for the
+     same report is its cover letter attachment. If no PDF is indexed, say that the CV should be
      generated first via `/career-ops pdf {report#}` or attached manually.
 
 2. `/career-ops email {pasted JD}`
@@ -72,7 +74,7 @@ Read:
 - `modes/_custom.md` if it exists
 - `voice-dna.md` if it exists, for writing style only
 - The selected report if invoked by report number or slug
-- `data/pdf-index.tsv` if present, to find generated PDF attachments
+- `data/pdf-index.tsv` if present, to find generated PDF attachments (`cv` and `cover` rows per report)
 
 Use `modes/_custom.md` only for procedural output preferences such as whether to
 include a contact block, whether to show an attachment checklist, or how concise
