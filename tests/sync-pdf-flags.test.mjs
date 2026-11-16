@@ -17,6 +17,7 @@ const TRACKER_HEADER = [
   '| 2 | 2026-01-02 | Globex | Data Eng | 4.0/5 | Evaluated | — | [2](reports/2-globex.md) | |',
   '| 3 | 2026-01-03 | Initech | SE | 3.5/5 | Evaluated | ✅ | [3](reports/3-initech.md) | |',
   '| 4 | 2026-01-04 | Massive Dynamic | SE | 4.0/5 | Evaluated | ❌ | [4](reports/4-massive.md) | |',
+  '| 5 | 2026-01-05 | Hooli | SE | 4.0/5 | Evaluated | ❌ | [5](reports/5-hooli.md) | |',
   '',
 ].join('\n');
 
@@ -25,6 +26,9 @@ const PDF_MANIFEST = [
   '1\toutput/1-acme-cv.pdf\toutput/1-acme.html\ta4\t2026-01-01',
   '002\toutput/2-globex-cv.pdf\toutput/2-globex.html\ta4\t2026-01-02',
   '3\toutput/3-initech-cv.pdf\toutput/3-initech.html\ta4\t2026-01-03',
+  // Report 5 has only a cover letter: one legacy row (kind inferred), one explicit.
+  '5\toutput/hooli-se-005-cover.pdf\t\ta4\t2026-01-05',
+  '5\toutput/hooli-se-005-letter.pdf\t\ta4\t2026-01-05\tcover',
   '',
 ].join('\n');
 
@@ -78,6 +82,13 @@ try {
     pass('sync-pdf-flags ignores rows missing from manifest');
   } else {
     fail(`sync-pdf-flags wrongly flipped Massive: ${massive.trim()}`);
+  }
+
+  const hooli = rows.find(l => /\bHooli\b/.test(l)) || '';
+  if (/\|\s*❌\s*\|\s*\[5\]/.test(hooli)) {
+    pass('sync-pdf-flags leaves ❌ when only a cover letter is indexed for the report');
+  } else {
+    fail(`sync-pdf-flags flipped Hooli on a cover letter: ${hooli.trim()}`);
   }
 } catch (e) {
   fail(`sync-pdf-flags.mjs tests crashed: ${e.message}`);
