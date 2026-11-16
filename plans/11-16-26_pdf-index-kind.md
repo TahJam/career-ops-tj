@@ -1,7 +1,11 @@
 # Keep one `data/pdf-index.tsv` row per (report, kind) so a cover letter stops replacing the CV row
 
-> **Status: planned 2026-11-16** on `fix/pdf-report-kind`. Tracks
-> [TahJam/career-ops-tj#6](https://github.com/TahJam/career-ops-tj/issues/6).
+> **Status: implemented 2026-11-16** on `fix/pdf-report-kind` → PR #9 into `origin/main` (hashes in
+> "Suggested Commit Order"). Tracks [TahJam/career-ops-tj#6](https://github.com/TahJam/career-ops-tj/issues/6).
+> `node test-all.mjs` 3036 passed / 1 failed (baseline 3015 / 1; the failure is the pre-existing
+> `tests/company-funded.test.mjs` date window). `go test ./...` passes. Live index migrated (116 rows,
+> all with `kind`); 094 has its `cv` and `cover` rows. `npm run sheets:sync:dry`: 124 existing, 0 added,
+> 0 row updates. No real sheet write.
 
 ## Context
 
@@ -192,18 +196,48 @@ write also performs the D2 migration on the live file. The result is two rows fo
 
 | # | Commit | Step | Files |
 |---|---|---|---|
-| 0 | `docs(plans): plan per-(report, kind) rows in pdf-index.tsv` | — | this plan |
-| 1 | `feat(lib): add a shared pdf-index parser with kind inference` | 1 | `lib/pdf-manifest.mjs`, `tests/pdf-manifest.test.mjs` |
-| 2 | `fix(lib): keep one pdf-index row per (report, kind)` | 2 | `lib/pdf-manifest.mjs`, `tests/pdf-manifest.test.mjs`, `test-all.mjs` |
-| 3 | `fix(cover-letter): record cover letters as kind cover` | 3 | `generate-pdf.mjs`, `generate-cover-letter.mjs`, a test |
-| 4 | `refactor(find): read CV rows through the shared pdf-index parser` | 4 | `find.mjs`, `export-cv.mjs`, `outcome.mjs`, `merge-tracker.mjs`, their tests |
-| 5 | `fix(export-cv): drop the -cover.pdf workaround` | 5 | `export-cv.mjs`, `tests/export-cv.test.mjs` |
-| 6 | `refactor(sheets,sync-pdf-flags): use the shared pdf-index parser` | 6 | `sync-pdf-flags.mjs`, `plugins/sheets/_sources.mjs`, their tests |
-| 7 | `fix(dashboard): select the CV row by kind in the manifest reader` | 7 | `dashboard/internal/data/pdf.go`, `dashboard/internal/data/pdf_test.go` |
-| 8 | `docs: describe the pdf-index kind column` | 8 | `DATA_CONTRACT.md`, `modes/pdf.md`, `modes/email.md`, `docs/SCRIPTS.md` |
-| — | *(no commit)* re-record 094's CV, migrate the live index | 9 | `data/pdf-index.tsv` (gitignored) |
-| — | *(no commit)* `npm run sheets:sync:dry` → shown to the user | 10 | — |
+| 0 | `docs(plans): plan per-(report, kind) rows in pdf-index.tsv` ✅ `42ff398` | — | this plan |
+| 1 | `feat(lib): add a shared pdf-index parser with kind inference` ✅ `bea975b` | 1 | `lib/pdf-manifest.mjs`, `tests/pdf-manifest.test.mjs` |
+| 2 | `fix(lib): keep one pdf-index row per (report, kind)` ✅ `bae4b60` | 2 | `lib/pdf-manifest.mjs`, `tests/pdf-manifest.test.mjs` |
+| 3 | `fix(cover-letter): record cover letters as kind cover` ✅ `c58a4bc` | 3 | `generate-pdf.mjs`, `generate-cover-letter.mjs`, `tests/cover-letter-manifest.test.mjs` |
+| 4 | `refactor(find): read CV rows through the shared pdf-index parser` ✅ `a6e9859` | 4 | `find.mjs`, `export-cv.mjs`, `outcome.mjs`, `merge-tracker.mjs`, `test-all.mjs`, `tests/outcome.test.mjs` |
+| 5 | `fix(export-cv): drop the -cover.pdf workaround` ✅ `7a378ec` | 5 | `export-cv.mjs`, `tests/export-cv.test.mjs` |
+| 6 | `refactor(sheets,sync-pdf-flags): use the shared pdf-index parser` ✅ `025eb2c` | 6 | `sync-pdf-flags.mjs`, `plugins/sheets/_sources.mjs`, `tests/sync-pdf-flags.test.mjs`, `tests/sheets-resume-names.test.mjs` |
+| 7 | `fix(dashboard): select the CV row by kind in the manifest reader` ✅ `082b5f4` | 7 | `dashboard/internal/data/pdf.go`, `dashboard/internal/data/pdf_test.go` |
+| 8 | `docs: describe the pdf-index kind column` ✅ `79fe568` | 8 | `DATA_CONTRACT.md`, `modes/pdf.md`, `modes/email.md`, `modes/cover.md`, `docs/SCRIPTS.md`, `lib/pdf-manifest.mjs` |
+| — | *(no commit)* re-record 094's CV, migrate the live index ✅ | 9 | `data/pdf-index.tsv` (gitignored) |
+| — | *(no commit)* `npm run sheets:sync:dry` → shown to the user ✅ | 10 | — |
 | 9 | `docs(plans): mark the pdf-index kind plan complete` | — | this plan |
+
+## Implementation notes
+
+- **`test-all.mjs` manifest fixtures needed no change in commit 2.** They match on line prefixes
+  (`startsWith('144\t')`), so the sixth column didn't break them. `test-all.mjs` changed in commit 4
+  instead: the `find.mjs` fixture moved to `pdfPathsByReport` and gained a cover row, and a
+  merge-tracker case covers a report whose only indexed PDF is a cover letter.
+- **Behaviour change for readers:** a report whose only indexed PDF is a cover letter now has no PDF
+  for `find.mjs`, `export-cv.mjs`, `outcome.mjs`, the dashboard, and the sheets résumé column. It also
+  gets no ✅ from `merge-tracker.mjs` / `sync-pdf-flags.mjs`. This is intentional, because the PDF column
+  means the tailored CV. After the 094 repair, no live report is in that state.
+- **Dashboard D key.** A cover row's `html` column holds the cover letter's JSON payload
+  (`renderHtmlToPdf`'s `inputPath`), when that payload is inside the repo. Before this change, a cover
+  row could reach `LoadPDFManifest`, and the D key would have re-rendered the JSON as CV HTML. Indexing
+  only `cv` rows closes that path too.
+- **`resumeNames()` gained the `CAREER_OPS_PDF_INDEX` override**, the same one the other readers honor,
+  so it can be tested against a fixture. It still skips non-numeric report cells, as before.
+- **`outcome.mjs` lookup simplified.** It looked up `padStart(3, '0')` and then the bare number. The
+  first lookup could never hit, because keys are normalized. It now does one `normReportKey(num)` lookup.
+- **`modes/cover.md` now passes `--report {NNN}` in report mode.** This wasn't in the plan. Before, the
+  cover mode never indexed its PDF, so the email mode's new "a `cover` row is the cover-letter attachment"
+  line would have had nothing to find. Paste mode drops the flag.
+- **Removed export-cv test.** "Accepts CVs named after a Cover… company" guarded the deleted
+  `-cover.pdf` refusal. The same rule is now pinned at `inferPDFKind` in both JS and Go.
+- **094 repair.** `mark-pdf-ready.mjs 094 --pdf …` recorded the CV with blank `format`, which is
+  existing `--pdf` behaviour. The tracker cell was already ✅ and wasn't touched. A diff against the
+  backup showed the other 115 rows unchanged apart from the added `kind`.
+- **Flaky test seen once.** During commit 4, one run of `test-all.mjs` failed "Check 14 did not pass
+  a matching row" (verify-pipeline). `verify-pipeline.mjs` imports nothing this change touches, and the
+  next three runs passed. It was not reproduced, so it is not filed.
 
 ## Out of scope
 
