@@ -26,7 +26,7 @@
  */
 
 import { readFileSync, existsSync, statSync, realpathSync, copyFileSync } from 'fs';
-import { basename, dirname, extname, resolve } from 'path';
+import { dirname, extname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'js-yaml';
 import { normNum } from './find.mjs';
@@ -71,17 +71,6 @@ export function resolveExport({ report, pdfIndex, exportPath, out, root, cwd }) 
       `Generate one with \`node generate-pdf.mjs <cv.html> <cv.pdf> --report=${reportNum}\` (the pdf mode passes it), ` +
       `or check the number with \`npm run find ${reportNum}\`.`);
   }
-  // generate-cover-letter.mjs --report NNN writes a report-keyed row too, and the
-  // manifest keeps one row per report, so the cover letter can replace the CV's
-  // row. Cover letters are always named *-cover.pdf (generator default and
-  // modes/cover.md), so match that suffix, not any "cover" in a company name.
-  if (/-cover\.pdf$/i.test(basename(pdfPath))) {
-    throw new ExportError(
-      `Report ${reportNum}'s indexed PDF is a cover letter (${pdfPath}), not the CV. ` +
-      `Generating the cover letter with --report replaced the CV's row in data/pdf-index.tsv. ` +
-      `Regenerate the CV with \`node generate-pdf.mjs <cv.html> <cv.pdf> --report=${reportNum}\`, then export again.`);
-  }
-
   let dest;
   let destSource;
   if (out) {
