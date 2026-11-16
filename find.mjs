@@ -29,13 +29,14 @@ import { dirname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { resolveColumns, parseTrackerRow, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { roleFuzzyMatch } from './role-matcher.mjs';
+import { normReportKey, pdfPathsByReport } from './lib/pdf-manifest.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
 // "008" and "8" are the same report — zero-padded report-link form vs unpadded
-// tracker-# form (same normalization as the manifest writer in generate-pdf.mjs).
-// Exported so lookups into parsePdfIndex() keys use the same rule (export-cv.mjs).
-export const normNum =(s) => String(s ?? '').trim().replace(/^0+(?=\d)/, '');
+// tracker-# form. The rule lives in lib/pdf-manifest.mjs so tracker lookups and
+// pdf-index.tsv keys (pdfPathsByReport) can never disagree.
+export const normNum = normReportKey;
 
 // Same status hygiene as tracker.mjs: strip markdown bold and stray dates so a
 // messy cell still prints as its canonical label.
@@ -73,25 +74,6 @@ export function parseTrackerRows(text) {
     });
   }
   return rows;
-}
-
-/**
- * Parse data/pdf-index.tsv (report \t pdf \t html \t format \t date) into a
- * normalized-report# → PDF-path map. Comment lines and rows generated without
- * a report number are skipped.
- *
- * @param {string} text - Full contents of pdf-index.tsv.
- * @returns {Map<string,string>}
- */
-export function parsePdfIndex(text) {
-  const map = new Map();
-  for (const line of String(text ?? '').split('\n')) {
-    if (!line.trim() || line.startsWith('#')) continue;
-    const fields = line.split('\t');
-    if (!fields[0]?.trim() || !fields[1]) continue;
-    map.set(normNum(fields[0]), fields[1]);
-  }
-  return map;
 }
 
 /**
@@ -143,7 +125,7 @@ export function resolveReportNumber(rows, selector) {
  *
  * @param {ReturnType<typeof parseTrackerRows>} rows
  * @param {string} query - Report#, tracker#, or company/role fragment.
- * @param {Map<string,string>} [pdfIndex] - From parsePdfIndex().
+ * @param {Map<string,string>} [pdfIndex] - Report# → CV path, from pdfPathsByReport() (lib/pdf-manifest.mjs).
  * @returns {Array<object>} Matching rows, each augmented with `pdfPath` (null when no PDF is indexed for its report).
  */
 export function findMatches(rows, query, pdfIndex = new Map()) {
@@ -190,7 +172,7 @@ function main() {
 
   const manifestPath = resolve(ROOT, 'data', 'pdf-index.tsv');
   const pdfIndex = existsSync(manifestPath)
-    ? parsePdfIndex(readFileSync(manifestPath, 'utf-8'))
+    ? pdfPathsByReport(readFileSync(manifestPath, 'utf-8'))
     : new Map();
 
   const matches = findMatches(rows, query, pdfIndex);

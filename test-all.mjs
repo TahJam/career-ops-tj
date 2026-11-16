@@ -8024,7 +8024,8 @@ try {
 // fragment to the full pipeline identity in one read-only lookup.
 console.log('\n🧪 Testing find.mjs pipeline identity lookup...');
 try {
-  const { parseTrackerRows, parsePdfIndex, findMatches } = await import(pathToFileURL(join(ROOT, 'find.mjs')).href);
+  const { parseTrackerRows, findMatches } = await import(pathToFileURL(join(ROOT, 'find.mjs')).href);
+  const { pdfPathsByReport } = await import(pathToFileURL(join(ROOT, 'lib', 'pdf-manifest.mjs')).href);
 
   // Tracker# and report# intentionally diverge: row 3 carries report 12, and a
   // different row is numbered 12 — the exact friction the tool exists to solve.
@@ -8034,9 +8035,12 @@ try {
     '| 3 | 2026-06-01 | Acme Labs | Platform Engineer | 4.2/5 | **Applied** (2026-06-02) | ✅ | [12](reports/012-acme-labs-2026-06-01.md) | strong fit |',
     '| 12 | 2026-06-10 | Globex | Data Engineer | 3.8/5 | Evaluated | ❌ | [15](reports/015-globex-2026-06-10.md) | — |',
   ].join('\n'));
-  const pdfIndex = parsePdfIndex(
-    '# report\tpdf\thtml\tformat\tdate — written by generate-pdf.mjs, do not edit\n' +
-    '012\toutput/cv-acme-labs.pdf\toutput/cv-acme-labs.html\tats\t2026-06-01\n');
+  // Report 12's cover letter was recorded after its CV (#6): find.mjs must
+  // still report the CV.
+  const pdfIndex = pdfPathsByReport(
+    '# report\tpdf\thtml\tformat\tdate\tkind — written by lib/pdf-manifest.mjs, do not edit\n' +
+    '012\toutput/cv-acme-labs.pdf\toutput/cv-acme-labs.html\tats\t2026-06-01\n' +
+    '012\toutput/acme-labs-platform-012-cover.pdf\t\ta4\t2026-06-02\tcover\n');
 
   const byTracker = findMatches(rows, '3', pdfIndex);
   if (byTracker.length === 1 && byTracker[0].company === 'Acme Labs' &&
@@ -8044,7 +8048,7 @@ try {
       byTracker[0].reportPath === 'reports/012-acme-labs-2026-06-01.md' &&
       byTracker[0].status === 'Applied' &&
       byTracker[0].pdfPath === 'output/cv-acme-labs.pdf') {
-    pass('find.mjs resolves a tracker# to company, report#, canonical status, and PDF path');
+    pass('find.mjs resolves a tracker# to company, report#, canonical status, and CV path (cover row ignored)');
   } else {
     fail(`find.mjs tracker# lookup wrong: ${JSON.stringify(byTracker)}`);
   }
@@ -8696,6 +8700,20 @@ try {
     pass('merge-tracker leaves PDF ❌ when the report number is absent from pdf-index.tsv');
   } else {
     fail('merge-tracker produced a false-positive PDF sync for a missing report number');
+  }
+
+  // The tracker PDF column means the tailored CV. A report with only a cover
+  // letter indexed (legacy 5-column row, kind inferred) has no CV yet (#6).
+  const coverOnly = runPdfSyncFixture(
+    'cover-only',
+    '| 9 | 2026-01-06 | Initech | Engineer | 4.0/5 | Evaluated | ❌ | [24](../reports/024-initech-2026-01-06.md) | ok |',
+    '# report\tpdf\thtml\tformat\tdate\n' +
+      '024\toutput/initech-engineer-024-cover.pdf\t\ta4\t2026-01-06\n',
+  );
+  if (coverOnly.result !== null && coverOnly.merged.includes('| ❌ | [24](../reports/024-initech-2026-01-06.md) |')) {
+    pass('merge-tracker leaves PDF ❌ when only a cover letter is indexed for the report');
+  } else {
+    fail('merge-tracker flipped the PDF cell for a report whose only indexed PDF is a cover letter');
   }
 
   const missingManifest = runPdfSyncFixture(

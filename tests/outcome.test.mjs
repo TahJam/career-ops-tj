@@ -190,6 +190,30 @@ try {
   check('Copies canonical PDF CV if present', existsSync(join(resWithPdf.outcomeDir, 'submitted_cv.pdf')));
   check('PDF CV content matches', readFileSync(join(resWithPdf.outcomeDir, 'submitted_cv.pdf'), 'utf-8') === 'PDF-CV-CONTENT');
 
+  // Test 9: Row 3 has no PDF in its tracker cell, so the CV comes from
+  // data/pdf-index.tsv. Its cover letter was recorded after its CV (#6); the
+  // archived submitted_cv.pdf must still be the CV.
+  writeFileSync(join(testDir, 'output', 'cv-unknown-003.pdf'), 'PDF-CV-FROM-INDEX');
+  writeFileSync(join(testDir, 'output', 'unknown-data-engineer-003-cover.pdf'), 'PDF-COVER-LETTER');
+  writeFileSync(join(testDir, 'data', 'pdf-index.tsv'),
+    '# report\tpdf\thtml\tformat\tdate\tkind\n' +
+    '003\toutput/cv-unknown-003.pdf\t\tletter\t2026-07-03\tcv\n' +
+    '003\toutput/unknown-data-engineer-003-cover.pdf\t\ta4\t2026-07-04\tcover\n');
+  const outFromIndex = execFileSync(NODE, [
+    OUTCOME_SCRIPT,
+    '3',
+    'interview_progress',
+    '--json',
+  ], {
+    cwd: testDir,
+    env: { ...process.env, CAREER_OPS_TRACKER: join(testDir, 'data', 'applications.md') },
+    encoding: 'utf-8',
+  });
+  const resFromIndex = JSON.parse(outFromIndex);
+  const archived = join(resFromIndex.outcomeDir, 'submitted_cv.pdf');
+  check('Archives the indexed CV, not the cover letter recorded after it',
+    existsSync(archived) && readFileSync(archived, 'utf-8') === 'PDF-CV-FROM-INDEX');
+
 } finally {
   rmSync(testDir, { recursive: true, force: true });
 }

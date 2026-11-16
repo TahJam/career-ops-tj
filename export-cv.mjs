@@ -29,7 +29,8 @@ import { readFileSync, existsSync, statSync, realpathSync, copyFileSync } from '
 import { basename, dirname, extname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'js-yaml';
-import { parsePdfIndex, normNum } from './find.mjs';
+import { normNum } from './find.mjs';
+import { pdfPathsByReport } from './lib/pdf-manifest.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +50,7 @@ export class ExportError extends Error {
  *
  * @param {object} args
  * @param {string} args.report - Report number as typed ("248", "0248").
- * @param {Map<string,string>} args.pdfIndex - From parsePdfIndex().
+ * @param {Map<string,string>} args.pdfIndex - Report# → CV path, from pdfPathsByReport().
  * @param {string} [args.exportPath] - `cv.export_path` from the profile.
  * @param {string} [args.out] - `--out` override.
  * @param {string} args.root - career-ops root (base for index paths and export_path).
@@ -187,7 +188,7 @@ function main() {
   }
 
   const indexPath = process.env.CAREER_OPS_PDF_INDEX || resolve(ROOT, 'data', 'pdf-index.tsv');
-  const pdfIndex = existsSync(indexPath) ? parsePdfIndex(readFileSync(indexPath, 'utf-8')) : new Map();
+  const pdfIndex = existsSync(indexPath) ? pdfPathsByReport(readFileSync(indexPath, 'utf-8')) : new Map();
   const profilePath = process.env.CAREER_OPS_PROFILE || resolve(ROOT, 'config', 'profile.yml');
 
   const plan = resolveExport({
