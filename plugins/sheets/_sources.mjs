@@ -15,6 +15,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseMachineSummary, checkJobLocation, sheetLocation, referredBy } from '../../lib/report-summary.mjs';
+import { pdfPathsByReport } from '../../lib/pdf-manifest.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -54,14 +55,17 @@ export function applyDates() {
  * @returns {Map<number, string>}
  */
 export function resumeNames() {
-  const text = read('data/pdf-index.tsv');
+  // CAREER_OPS_PDF_INDEX overrides the index (tests), as for its other readers.
+  const override = process.env.CAREER_OPS_PDF_INDEX;
+  const text = override
+    ? (existsSync(override) ? readFileSync(override, 'utf8') : null)
+    : read('data/pdf-index.tsv');
   const out = new Map();
   if (!text) return out;
-  for (const line of text.split('\n')) {
-    if (line.startsWith('#')) continue;
-    const [report, pdf] = line.split('\t');
-    if (!/^\d+$/.test(report ?? '') || !pdf) continue;
-    out.set(parseInt(report, 10), path.basename(pdf.trim()).replace(/\.pdf$/i, ''));
+  // The report's CV row only: a cover letter is not the résumé sent (#6).
+  for (const [report, pdf] of pdfPathsByReport(text)) {
+    if (!/^\d+$/.test(report)) continue;
+    out.set(parseInt(report, 10), path.basename(pdf).replace(/\.pdf$/i, ''));
   }
   return out;
 }

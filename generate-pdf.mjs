@@ -570,6 +570,7 @@ export async function inlineLocalFonts(html) {
  *   baseDir?: string,
  *   reportNum?: string,
  *   inputPath?: string,
+ *   kind?: 'cv'|'cover',
  *   maxPages?: number,
  *   strictPages?: boolean,
  *   launchBrowser?: (options: {headless: boolean}) => Promise<import('playwright').Browser>
@@ -581,6 +582,8 @@ export async function renderHtmlToPdf(html, outputPath, opts = {}) {
   const baseDir = opts.baseDir || process.cwd();
   const reportNum = opts.reportNum || '';
   const inputPath = opts.inputPath || '';
+  // Which pdf-index.tsv row this PDF fills for its report (lib/pdf-manifest.mjs).
+  const kind = opts.kind || 'cv';
 
   mkdirSync(dirname(outputPath), { recursive: true });
 
@@ -644,7 +647,7 @@ export async function renderHtmlToPdf(html, outputPath, opts = {}) {
     console.log(`📦 Size: ${(pdfBuffer.length / 1024).toFixed(1)} KB`);
 
     try {
-      updatePDFManifest(reportNum, outputPath, inputPath, format);
+      updatePDFManifest(reportNum, outputPath, inputPath, format, kind);
       console.log(`🔗 Manifest: data/pdf-index.tsv updated${reportNum ? ` (report ${reportNum})` : ' (no --report given)'}`);
     } catch (err) {
       // The PDF itself succeeded — never fail the run over manifest bookkeeping.

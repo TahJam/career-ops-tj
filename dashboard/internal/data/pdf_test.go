@@ -50,6 +50,78 @@ func TestLoadPDFManifestMissingFile(t *testing.T) {
 	}
 }
 
+// Issue #6: a cover letter recorded after the CV must not become the
+// application's PDF, whether its row carries kind=cover or is a legacy row
+// whose kind is inferred from the -cover.pdf suffix.
+func TestLoadPDFManifestSkipsCoverLetterRows(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "data/pdf-index.tsv",
+		"# report\tpdf\thtml\tformat\tdate\tkind\n"+
+			"094\toutput/cv-lightspeed-094.pdf\toutput/cv-lightspeed-094.html\tletter\t2026-08-05\tcv\n"+
+			"094\toutput/lightspeed-se-094-cover.pdf\tdata/cover-payload-094.json\tletter\t2026-08-06\tcover\n"+
+			"095\toutput/initech-se-095-cover.pdf\t\tletter\t2026-08-06\n"+
+			"096\toutput/cv-hooli-096.pdf\t\tletter\t2026-08-07\n"+
+			"097\toutput/cv-x-097.pdf\t\tletter\t2026-08-07\tresume\n")
+
+	manifest := LoadPDFManifest(root)
+	if entry, ok := manifest.Lookup(model.CareerApplication{ReportNumber: "094"}); !ok || entry.PDFPath != "output/cv-lightspeed-094.pdf" || entry.Kind != PDFKindCV {
+		t.Fatalf("expected report 094's CV row, got %+v (found=%v)", entry, ok)
+	}
+	if entry, ok := manifest["95"]; ok {
+		t.Fatalf("legacy -cover.pdf row must not be indexed as a CV, got %+v", entry)
+	}
+	if entry, ok := manifest["96"]; !ok || entry.Kind != PDFKindCV {
+		t.Fatalf("legacy CV row must be indexed with inferred kind cv, got %+v (found=%v)", entry, ok)
+	}
+	if _, ok := manifest["97"]; ok {
+		t.Fatalf("a row with an unknown kind is not a CV")
+	}
+	if len(manifest) != 2 {
+		t.Fatalf("expected 2 CV entries (094, 096), got %d: %+v", len(manifest), manifest)
+	}
+}
+
+func TestLoadPDFEntriesByPathKeepsEveryKind(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "data/pdf-index.tsv",
+		"094\toutput/cv-lightspeed-094.pdf\toutput/cv-lightspeed-094.html\tletter\t2026-08-05\tcv\n"+
+			"094\toutput/lightspeed-se-094-cover.pdf\t\tletter\t2026-08-06\tCOVER\n"+
+			"\toutput/legacy-cover.pdf\t\tletter\t2026-08-06\n")
+
+	byPath := LoadPDFEntriesByPath(root)
+	want := map[string]string{
+		"output/cv-lightspeed-094.pdf":       "cv",
+		"output/lightspeed-se-094-cover.pdf": "cover",
+		"output/legacy-cover.pdf":            "cover",
+	}
+	if len(byPath) != len(want) {
+		t.Fatalf("expected %d entries, got %d: %+v", len(want), len(byPath), byPath)
+	}
+	for path, kind := range want {
+		if got := byPath[path].Kind; got != kind {
+			t.Fatalf("%s: expected kind %q, got %q", path, kind, got)
+		}
+	}
+}
+
+// The same cases as inferPDFKind in tests/pdf-manifest.test.mjs: only the
+// -cover.pdf suffix marks a cover letter.
+func TestInferPDFKindMatchesJSRule(t *testing.T) {
+	cases := map[string]string{
+		"output/acme-staff-eng-042-cover.pdf": "cover",
+		"output/ACME-COVER.PDF":               "cover",
+		"output/cv-covera-health-042.pdf":     "cv",
+		"output/cv-acme-cover-team-042.pdf":   "cv",
+		"output/cover.pdf":                    "cv",
+		"":                                    "cv",
+	}
+	for path, want := range cases {
+		if got := inferPDFKind(path); got != want {
+			t.Errorf("inferPDFKind(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestResolvePDFsPrefersManifest(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "output/cv-jane-doe-acme-2026-06-01.pdf", "pdf")

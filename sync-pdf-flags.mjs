@@ -18,6 +18,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { extractTrackerReportNumbers, resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 import { rebuildRow, resolveTrackerPath, openTrackerTransaction } from './tracker-utils.mjs';
+import { pdfPathsByReport } from './lib/pdf-manifest.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const APPS_FILE = resolveTrackerPath(CAREER_OPS);
@@ -35,17 +36,13 @@ if (!existsSync(APPS_FILE)) {
   process.exit(2);
 }
 
+// Reports with an indexed CV. A cover-letter row is not a CV, so it never
+// earns the tracker's PDF checkmark (lib/pdf-manifest.mjs, #6).
 const manifestReports = new Set();
 if (existsSync(PDF_MANIFEST)) {
-  const content = readFileSync(PDF_MANIFEST, 'utf-8');
-  for (const line of content.split('\n')) {
-    if (!line.trim() || line.startsWith('#')) continue;
-    const parts = line.split('\t');
-    const reportVal = parts[0]?.trim();
-    if (reportVal) {
-      const norm = parseInt(reportVal, 10);
-      if (!isNaN(norm) && norm > 0) manifestReports.add(norm);
-    }
+  for (const key of pdfPathsByReport(readFileSync(PDF_MANIFEST, 'utf-8')).keys()) {
+    const norm = parseInt(key, 10);
+    if (!isNaN(norm) && norm > 0) manifestReports.add(norm);
   }
 }
 

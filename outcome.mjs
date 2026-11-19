@@ -27,7 +27,8 @@ import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { parseTrackerRow, resolveColumns, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { resolveTrackerPath } from './tracker-utils.mjs';
-import { parsePdfIndex, resolveReportNumber } from './find.mjs';
+import { resolveReportNumber } from './find.mjs';
+import { normReportKey, pdfPathsByReport } from './lib/pdf-manifest.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const NODE = process.execPath;
@@ -225,10 +226,11 @@ if (flags.cv) {
     if (existsSync(manifestPath)) {
       try {
         const manifestText = readFileSync(manifestPath, 'utf-8');
-        const pdfMap = parsePdfIndex(manifestText);
+        // The report's CV row only -- a cover letter is not the archived CV.
+        const pdfMap = pdfPathsByReport(manifestText);
         const reportNums = extractTrackerReportNumbers(matchedRow.report);
         for (const num of reportNums) {
-          const mappedPdf = pdfMap.get(String(num).padStart(3, '0')) || pdfMap.get(String(num));
+          const mappedPdf = pdfMap.get(normReportKey(num));
           if (mappedPdf) {
             const fullPdfPath = join(repoRoot, mappedPdf.replace(/^local:/, ''));
             if (existsSync(fullPdfPath)) {

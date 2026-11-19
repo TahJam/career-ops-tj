@@ -12,7 +12,7 @@ import (
 )
 
 // PDFManifestEntry is one row of data/pdf-index.tsv, written by
-// generate-pdf.mjs each time a PDF is produced. ReportNumber may be empty
+// lib/pdf-manifest.mjs each time a PDF is produced. ReportNumber may be empty
 // for PDFs generated without --report; those rows still help the glob
 // matcher via their recorded paths.
 type PDFManifestEntry struct {
@@ -21,11 +21,18 @@ type PDFManifestEntry struct {
 	HTMLPath     string // relative to the career-ops root, "" if unknown
 	Format       string // "letter" or "a4"
 	Date         string // YYYY-MM-DD generation date
+	Kind         string // "cv" or "cover"; inferred for rows written before the column existed
 }
 
-// PDFManifest indexes manifest entries by normalized report number (leading
-// zeros stripped, so "008" and "8" collide deliberately). Rows without a
-// report number are not indexed (the glob path covers them).
+// PDFKindCV is the manifest kind of a tailored CV — the only kind the
+// report-keyed PDFManifest indexes. A report's cover letter has its own
+// "cover" row next to it.
+const PDFKindCV = "cv"
+
+// PDFManifest indexes CV manifest entries by normalized report number
+// (leading zeros stripped, so "008" and "8" collide deliberately). Rows
+// without a report number, and cover-letter rows, are not indexed (the glob
+// path covers the former).
 type PDFManifest map[string]PDFManifestEntry
 
 // isSafeRepoRelativePath returns true iff p is a non-empty, non-absolute path
@@ -74,86 +81,96 @@ func (m PDFManifest) Lookup(app model.CareerApplication) (PDFManifestEntry, bool
 	return PDFManifestEntry{}, false
 }
 
-// LoadPDFEntriesByPath reads data/pdf-index.tsv and returns all entries indexed
-// by their relative PDF path. Unlike LoadPDFManifest, this includes rows that
-// were generated without a --report flag. Later rows in the file win.
-func LoadPDFEntriesByPath(careerOpsPath string) map[string]PDFManifestEntry {
-	byPath := make(map[string]PDFManifestEntry)
+// inferPDFKind decides a row's kind when its kind column is missing (rows
+// written before the column existed): a basename ending in -cover.pdf is a
+// cover letter, anything else a CV. Mirrors inferPDFKind in
+// lib/pdf-manifest.mjs — keep the two in step.
+func inferPDFKind(pdfPath string) string {
+	p := strings.ToLower(strings.TrimSpace(pdfPath))
+	if strings.HasSuffix(p[strings.LastIndex(p, "/")+1:], "-cover.pdf") {
+		return "cover"
+	}
+	return PDFKindCV
+}
+
+// parseManifestLine reads one data/pdf-index.tsv line (report, pdf, html,
+// format, date, kind). It rejects blank and comment lines, lines without a
+// PDF path, and PDF paths that are absolute or escape the repo; an unsafe
+// HTML path is blanked rather than rejecting the row.
+func parseManifestLine(line string) (PDFManifestEntry, bool) {
+	line = strings.TrimRight(line, "\r")
+	if line == "" || strings.HasPrefix(line, "#") {
+		return PDFManifestEntry{}, false
+	}
+	fields := strings.Split(line, "\t")
+	if len(fields) < 2 {
+		return PDFManifestEntry{}, false
+	}
+	field := func(i int) string {
+		if i < len(fields) {
+			return strings.TrimSpace(fields[i])
+		}
+		return ""
+	}
+	entry := PDFManifestEntry{
+		ReportNumber: field(0),
+		PDFPath:      field(1),
+		HTMLPath:     field(2),
+		Format:       field(3),
+		Date:         field(4),
+		Kind:         strings.ToLower(field(5)),
+	}
+	if entry.PDFPath == "" || !isSafeRepoRelativePath(entry.PDFPath) {
+		return PDFManifestEntry{}, false
+	}
+	if entry.HTMLPath != "" && !isSafeRepoRelativePath(entry.HTMLPath) {
+		entry.HTMLPath = ""
+	}
+	if entry.Kind == "" {
+		entry.Kind = inferPDFKind(entry.PDFPath)
+	}
+	return entry, true
+}
+
+// loadManifestEntries reads every usable row of data/pdf-index.tsv in file
+// order. A missing file is not an error — the manifest is optional and absent
+// until the first PDF is recorded.
+func loadManifestEntries(careerOpsPath string) []PDFManifestEntry {
 	raw, err := os.ReadFile(filepath.Join(careerOpsPath, "data", "pdf-index.tsv"))
 	if err != nil {
-		return byPath
+		return nil
 	}
+	var entries []PDFManifestEntry
 	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		if entry, ok := parseManifestLine(line); ok {
+			entries = append(entries, entry)
 		}
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			continue
-		}
-		entry := PDFManifestEntry{
-			ReportNumber: strings.TrimSpace(fields[0]),
-			PDFPath:      strings.TrimSpace(fields[1]),
-		}
-		if entry.PDFPath == "" || !isSafeRepoRelativePath(entry.PDFPath) {
-			continue
-		}
-		if len(fields) > 2 {
-			entry.HTMLPath = strings.TrimSpace(fields[2])
-			if entry.HTMLPath != "" && !isSafeRepoRelativePath(entry.HTMLPath) {
-				entry.HTMLPath = ""
-			}
-		}
-		if len(fields) > 3 {
-			entry.Format = strings.TrimSpace(fields[3])
-		}
-		if len(fields) > 4 {
-			entry.Date = strings.TrimSpace(fields[4])
-		}
+	}
+	return entries
+}
+
+// LoadPDFEntriesByPath reads data/pdf-index.tsv and returns all entries indexed
+// by their relative PDF path. Unlike LoadPDFManifest, this includes rows that
+// have no report number and rows of every kind, so a caller holding a PDF path
+// (e.g. from the glob fallback) can still find its source HTML and kind.
+// Later rows in the file win.
+func LoadPDFEntriesByPath(careerOpsPath string) map[string]PDFManifestEntry {
+	byPath := make(map[string]PDFManifestEntry)
+	for _, entry := range loadManifestEntries(careerOpsPath) {
 		byPath[entry.PDFPath] = entry
 	}
 	return byPath
 }
 
-// LoadPDFManifest reads data/pdf-index.tsv under careerOpsPath. A missing
-// file is not an error — the manifest is optional and absent until the
-// first generate-pdf.mjs run that writes it. Later rows win over earlier
-// ones for the same report number, so regenerated PDFs supersede stale
-// entries without any compaction step.
+// LoadPDFManifest reads the CV rows of data/pdf-index.tsv under careerOpsPath,
+// keyed by report number. Cover-letter rows are skipped: the dashboard's PDF
+// for an application is its CV. Later rows win over earlier ones for the same
+// report number, so regenerated PDFs supersede stale entries without any
+// compaction step.
 func LoadPDFManifest(careerOpsPath string) PDFManifest {
 	manifest := make(PDFManifest)
-	raw, err := os.ReadFile(filepath.Join(careerOpsPath, "data", "pdf-index.tsv"))
-	if err != nil {
-		return manifest
-	}
-
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			continue
-		}
-		entry := PDFManifestEntry{
-			ReportNumber: strings.TrimSpace(fields[0]),
-			PDFPath:      strings.TrimSpace(fields[1]),
-		}
-		if len(fields) > 2 {
-			entry.HTMLPath = strings.TrimSpace(fields[2])
-			if entry.HTMLPath != "" && !isSafeRepoRelativePath(entry.HTMLPath) {
-				entry.HTMLPath = ""
-			}
-		}
-		if len(fields) > 3 {
-			entry.Format = strings.TrimSpace(fields[3])
-		}
-		if len(fields) > 4 {
-			entry.Date = strings.TrimSpace(fields[4])
-		}
-		if entry.ReportNumber == "" || entry.PDFPath == "" || !isSafeRepoRelativePath(entry.PDFPath) {
+	for _, entry := range loadManifestEntries(careerOpsPath) {
+		if entry.ReportNumber == "" || entry.Kind != PDFKindCV {
 			continue
 		}
 		manifest[normalizeReportKey(entry.ReportNumber)] = entry

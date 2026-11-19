@@ -16,6 +16,7 @@ import { execFileSync } from 'child_process';
 import { pathToFileURL } from 'url';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, statSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
+import { pdfPathsByReport } from '../lib/pdf-manifest.mjs';
 
 console.log('\nexport-cv.mjs — copy a report\'s CV PDF to the upload path');
 
@@ -106,28 +107,28 @@ if (mod) {
   }
 
   {
-    // Given a report whose index row was taken over by its cover letter
-    // (generate-cover-letter.mjs --report NNN replaces the CV's row)
-    const coverIndex = new Map([['94', 'output/lightspeed-systems-software-engineer-cover.pdf']]);
-    const { error } = attempt({ report: '94', pdfIndex: coverIndex, exportPath: '/x.pdf' });
-    // Then it refuses instead of uploading a cover letter as the resume
-    if (error instanceof ExportError && /cover letter/i.test(error.message) && /--report=94/.test(error.message)) {
-      pass('refuses when the indexed PDF is a cover letter, with the --report= regenerate hint');
+    // Given report 94's CV, then its cover letter recorded after it (#6), as
+    // the CLI reads them: manifest text through the shared parser
+    const text =
+      '# report\tpdf\thtml\tformat\tdate\tkind\n' +
+      '094\toutput/cv-lightspeed-094.pdf\t\tletter\t2026-08-05\tcv\n' +
+      '094\toutput/lightspeed-systems-software-engineer-094-cover.pdf\t\tletter\t2026-08-06\tcover\n' +
+      '095\toutput/initech-engineer-095-cover.pdf\t\tletter\t2026-08-06\n';
+    const fromText = pdfPathsByReport(text);
+    const { result, error } = attempt({ report: '94', pdfIndex: fromText, exportPath: '/x.pdf' });
+    // Then the CV is exported, not the cover letter
+    if (!error && result.src === resolve(root, 'output/cv-lightspeed-094.pdf')) {
+      pass('exports the CV when a cover letter was recorded for the report after it');
     } else {
-      fail(`cover-letter row should throw naming the cover letter and --report=94: ${error?.message}`);
+      fail(`cover row after the CV broke the export: ${JSON.stringify(result ?? error?.message)}`);
     }
-  }
-
-  {
-    // Given CVs whose names merely contain "cover" (company "Cover Genius") or skip the cv- prefix
-    const cvIndex = new Map([
-      ['12', 'output/cv-jane-cover-genius-12-2026-10-01.pdf'],
-      ['183', 'output/taherjamali-vercel-183-2026-09-11.pdf'],
-    ]);
-    const a = attempt({ report: '12', pdfIndex: cvIndex, exportPath: '/x.pdf' });
-    const b = attempt({ report: '183', pdfIndex: cvIndex, exportPath: '/x.pdf' });
-    if (a.result && b.result) pass('accepts CVs named after a "Cover…" company or without a cv- prefix');
-    else fail(`CV names wrongly refused: ${a.error?.message} / ${b.error?.message}`);
+    // And a report with only a (legacy, inferred) cover row has no CV to export
+    const onlyCover = attempt({ report: '95', pdfIndex: fromText, exportPath: '/x.pdf' }).error;
+    if (onlyCover instanceof ExportError && /has no PDF/.test(onlyCover.message)) {
+      pass('a report whose only indexed PDF is a cover letter has no CV to export');
+    } else {
+      fail(`cover-only report should report no PDF: ${onlyCover?.message}`);
+    }
   }
 
   {

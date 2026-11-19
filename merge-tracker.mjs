@@ -20,7 +20,7 @@ import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
 import { roleExactMatch } from './role-matcher.mjs';
-import { parsePdfIndex } from './find.mjs';
+import { pdfPathsByReport } from './lib/pdf-manifest.mjs';
 import { LEGACY_COLMAP, detectColumns, resolveScoreStatus, normalizeVia, SEPARATOR_ROW_RE, extractTrackerReportNumbers } from './tracker-parse.mjs';
 import { resolveTrackerPath, trackerLockDirFor, acquireTrackerLock, writeFileAtomic, normalizeCompany, cell } from './tracker-utils.mjs';
 
@@ -245,11 +245,11 @@ function parseScore(s) {
  * data/pdf-index.tsv is gitignored and only exists after generate-pdf.mjs has
  * written at least one PDF. Missing manifest = nothing to sync.
  *
- * @returns {Map<string,string>} Normalized report# → PDF path.
+ * @returns {Map<string,string>} Normalized report# → CV path (cover-letter rows excluded).
  */
 function loadPdfIndex() {
   return existsSync(PDF_INDEX_FILE)
-    ? parsePdfIndex(readFileSync(PDF_INDEX_FILE, 'utf-8'))
+    ? pdfPathsByReport(readFileSync(PDF_INDEX_FILE, 'utf-8'))
     : new Map();
 }
 
